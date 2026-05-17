@@ -14,14 +14,14 @@ Agent skills for **IBM i**. Drop-in plugins for Claude Code, GitHub Copilot, Cur
 ### Claude Code
 
 ```
-/plugin marketplace add Programmersio-IBMi/skills
+/plugin marketplace add programmersio-ibmi/skills
 /plugin install ia@skills
 ```
 
 ### Gemini CLI
 
 ```
-gemini extensions install https://github.com/Programmersio-IBMi/skills
+gemini extensions install https://github.com/programmersio-ibmi/skills
 ```
 
 ### GitHub Copilot CLI
@@ -32,7 +32,7 @@ Add this repo to your settings:
 // settings.json
 {
   "chat.plugins.marketplaces": [
-    "https://github.com/Programmersio-IBMi/skills"
+    "https://github.com/programmersio-ibmi/skills"
   ]
 }
 ```
@@ -42,13 +42,13 @@ Add this repo to your settings:
 Install from the Cursor plugin marketplace, or clone manually:
 
 ```
-git clone https://github.com/Programmersio-IBMi/skills ~/.cursor/plugins/ia
+git clone https://github.com/programmersio-ibmi/skills ~/.cursor/plugins/ia
 ```
 
 ### Any other harness (manual)
 
 ```
-git clone https://github.com/Programmersio-IBMi/skills
+git clone https://github.com/programmersio-ibmi/skills
 cp -r skills/ia ~/.claude/skills/      # or wherever your harness loads skills from
 ```
 

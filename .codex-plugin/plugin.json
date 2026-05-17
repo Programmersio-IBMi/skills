@@ -2,7 +2,7 @@
   "name": "ia",
   "version": "1.0.0",
   "description": "IBM i Impact Analysis for coding agents.",
-  "homepage": "https://github.com/Programmersio-IBMi/skills",
+  "homepage": "https://github.com/programmersio-ibmi/skills",
   "license": "MIT",
   "author": {
     "name": "programmers.io",
@@ -22,7 +22,7 @@
       "Document program ORDENTRY for senior developers.",
       "Show me the call tree for BILLPROC."
     ],
-    "websiteURL": "https://github.com/Programmersio-IBMi/skills",
+    "websiteURL": "https://github.com/programmersio-ibmi/skills",
     "brandColor": "#0F62FE",
     "composerIcon": "./assets/icon.svg",
     "logo": "./assets/logo.png",
