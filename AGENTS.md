@@ -1,0 +1,1 @@
+@./skills/ia/SKILL.md

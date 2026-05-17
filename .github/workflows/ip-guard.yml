@@ -1,0 +1,49 @@
+name: IP Guard
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  ip-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Scan for forbidden internal patterns
+        run: |
+          set -euo pipefail
+          # Patterns that must never appear in a public skill release.
+          # Adjust this list when new internal naming conventions land.
+          forbidden=(
+            'execute_sql'
+            'IADEMODEV'
+            'ia-tools-ibmi'
+            'IA[A-Z]{2,}PF'
+            'FROM[[:space:]]+IA[A-Z]+PF'
+            'FETCH[[:space:]]+FIRST[[:space:]]+:[a-z_]+[[:space:]]+ROWS'
+          )
+          fail=0
+          for pat in "${forbidden[@]}"; do
+            # Exclude .git, .github (so the workflow itself doesn't trigger),
+            # and the LICENSE/CHANGELOG which have no executable content.
+            matches=$(grep -rEln "$pat" \
+              --exclude-dir=.git \
+              --exclude-dir=.github \
+              --exclude='LICENSE' \
+              . 2>/dev/null || true)
+            if [[ -n "$matches" ]]; then
+              echo "::error::Forbidden pattern '$pat' detected in:"
+              echo "$matches" | sed 's/^/  /'
+              fail=1
+            fi
+          done
+          if [[ $fail -ne 0 ]]; then
+            echo
+            echo "IP guard failed. Internal-only patterns (SQL, internal table names,"
+            echo "internal repo URLs, execute_sql refs) must not appear in this public repo."
+            exit 1
+          fi
+          echo "IP guard: clean."

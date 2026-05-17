@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# Session-start bootstrap: primes the agent with the using-ia meta-skill so
+# the iA skill is volunteered for any IBM i task on the first turn.
+#
+# Detects host platform via env vars and emits the matching JSON envelope:
+#   Cursor       -> {"additional_context": "..."}              (top-level snake_case)
+#   Claude Code  -> {"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": "..."}}
+#   Copilot CLI  -> {"additionalContext": "..."}               (top-level camelCase)
+
+set -euo pipefail
+
+HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SKILL_FILE="${HOOK_DIR}/../skills/using-ia/SKILL.md"
+
+if [[ -f "$SKILL_FILE" ]]; then
+  # Strip YAML frontmatter (everything between the first two `---` markers).
+  PRIMER=$(awk '
+    /^---[[:space:]]*$/ { fm++; next }
+    fm < 2 { next }
+    { print }
+  ' "$SKILL_FILE")
+else
+  PRIMER="You have an iA skill for IBM i. Invoke it before any RPG, CL, DDS, or program analysis task."
+fi
+
+# JSON-escape the primer string. Python reads stdin as raw bytes and decodes
+# UTF-8 explicitly so locale (LC_ALL=C, cp1252 on Windows, etc.) doesn't
+# mangle multi-byte characters in the bootstrap text.
+if command -v python3 >/dev/null 2>&1; then
+  PRIMER_JSON=$(printf '%s' "$PRIMER" | python3 -c "import json,sys; sys.stdout.write(json.dumps(sys.stdin.buffer.read().decode('utf-8')))")
+elif command -v python >/dev/null 2>&1; then
+  PRIMER_JSON=$(printf '%s' "$PRIMER" | python -c "import json,sys; sys.stdout.write(json.dumps(sys.stdin.buffer.read().decode('utf-8') if hasattr(sys.stdin,'buffer') else sys.stdin.read()))")
+elif command -v jq >/dev/null 2>&1; then
+  PRIMER_JSON=$(printf '%s' "$PRIMER" | jq -Rs .)
+else
+  # Last-resort: minimal escape for backslashes, double quotes, and newlines.
+  # ASCII-only — non-ASCII characters get lost.
+  esc=$(printf '%s' "$PRIMER" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' | awk 'BEGIN{ORS=""} {if(NR>1) printf "\\n"; print}')
+  PRIMER_JSON="\"${esc}\""
+fi
+
+# Platform detection (in priority order).
+if [[ -n "${CURSOR_WORKSPACE:-}${CURSOR_HOOK:-}${CURSOR_AGENT:-}" ]]; then
+  printf '{"additional_context": %s}\n' "$PRIMER_JSON"
+elif [[ -n "${GITHUB_COPILOT_CLI:-}${COPILOT_AGENT:-}${COPILOT_CLI:-}" ]]; then
+  printf '{"additionalContext": %s}\n' "$PRIMER_JSON"
+else
+  printf '{"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": %s}}\n' "$PRIMER_JSON"
+fi

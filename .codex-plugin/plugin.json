@@ -1,0 +1,35 @@
+{
+  "name": "ia",
+  "version": "1.0.0",
+  "description": "IBM i Impact Analysis for coding agents.",
+  "homepage": "https://github.com/Programmersio-IBMi/skills",
+  "license": "MIT",
+  "author": {
+    "name": "programmers.io",
+    "email": "support@programmers.io",
+    "url": "https://programmers.io"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "iA — IBM i Impact Analysis",
+    "shortDescription": "RPG/CL dependency tracing, field impact, call hierarchy, spec generation.",
+    "longDescription": "Use iA to navigate IBM i applications the way a seasoned RPG developer does. Trace where-used, build call graphs, classify field-change impact, generate audience-tuned program specs.",
+    "developerName": "programmers.io",
+    "category": "Coding",
+    "capabilities": ["Interactive", "Read", "Write"],
+    "defaultPrompt": [
+      "Trace the impact of changing field CUSTNO in CUSTMAST.",
+      "Document program ORDENTRY for senior developers.",
+      "Show me the call tree for BILLPROC."
+    ],
+    "websiteURL": "https://github.com/Programmersio-IBMi/skills",
+    "brandColor": "#0F62FE",
+    "composerIcon": "./assets/icon.svg",
+    "logo": "./assets/logo.png",
+    "screenshots": [
+      "./assets/screenshots/01-call-hierarchy.png",
+      "./assets/screenshots/02-field-impact.png",
+      "./assets/screenshots/03-program-spec.png"
+    ]
+  }
+}

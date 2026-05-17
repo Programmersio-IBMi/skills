@@ -1,0 +1,12 @@
+{
+  "name": "ia-tools-skill",
+  "version": "1.0.0",
+  "description": "IBM i Impact Analysis — dependency tracing, field impact, call hierarchy, program documentation.",
+  "license": "MIT",
+  "type": "module",
+  "homepage": "https://github.com/Programmersio-IBMi/skills",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Programmersio-IBMi/skills.git"
+  }
+}

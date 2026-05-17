@@ -1,0 +1,72 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract version from tag
+        id: vars
+        run: |
+          version="${GITHUB_REF#refs/tags/v}"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Verify tag matches manifest versions
+        run: |
+          set -euo pipefail
+          expected="${{ steps.vars.outputs.version }}"
+          mismatch=0
+          while IFS= read -r entry; do
+            path=$(echo "$entry" | jq -r '.path')
+            field=$(echo "$entry" | jq -r '.field')
+            jq_path=$(echo "$field" | sed -E 's/\.([0-9]+)/[\1]/g')
+            actual=$(jq -r ".${jq_path}" "$path" 2>/dev/null || echo "")
+            if [[ "$actual" != "$expected" ]]; then
+              echo "::error::$path .${jq_path} is '$actual', expected '$expected'"
+              mismatch=1
+            fi
+          done < <(jq -c '.files[]' .version-bump.json)
+          if [[ $mismatch -ne 0 ]]; then
+            echo
+            echo "Run './scripts/bump-version.sh ${expected}' locally, commit, retag."
+            exit 1
+          fi
+
+      - name: Extract release notes from CHANGELOG
+        id: notes
+        run: |
+          set -euo pipefail
+          version="${{ steps.vars.outputs.version }}"
+          notes=$(awk -v ver="$version" '
+            BEGIN { capture = 0 }
+            $0 ~ "^## \\[?" ver "\\]?" { capture = 1; next }
+            capture && /^## / { exit }
+            capture { print }
+          ' CHANGELOG.md)
+          if [[ -z "$notes" ]]; then
+            notes="Release v$version"
+          fi
+          {
+            echo "notes<<RELEOF"
+            echo "$notes"
+            echo "RELEOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "v${{ steps.vars.outputs.version }}" \
+            --title "v${{ steps.vars.outputs.version }}" \
+            --notes "${{ steps.notes.outputs.notes }}"

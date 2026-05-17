@@ -1,0 +1,105 @@
+name: Validate
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install PyYAML
+        run: pip install pyyaml
+
+      - name: Validate JSON manifests
+        run: |
+          set -euo pipefail
+          fail=0
+          while IFS= read -r f; do
+            if ! jq empty "$f" >/dev/null 2>&1; then
+              echo "::error file=$f::Invalid JSON"
+              fail=1
+            fi
+          done < <(find . -name '*.json' -not -path './.git/*' -not -path './node_modules/*')
+          exit $fail
+
+      - name: Validate YAML files
+        run: |
+          set -euo pipefail
+          fail=0
+          while IFS= read -r f; do
+            if ! python -c "import sys, yaml; yaml.safe_load(open('$f'))" 2>/dev/null; then
+              echo "::error file=$f::Invalid YAML"
+              fail=1
+            fi
+          done < <(find . \( -name '*.yml' -o -name '*.yaml' \) -not -path './.git/*')
+          exit $fail
+
+      - name: Verify required files exist
+        run: |
+          set -euo pipefail
+          required=(
+            ".claude-plugin/plugin.json"
+            ".claude-plugin/marketplace.json"
+            ".github/plugin/marketplace.json"
+            ".agents/plugins/marketplace.json"
+            ".codex-plugin/plugin.json"
+            ".cursor-plugin/plugin.json"
+            "gemini-extension.json"
+            "plugin.json"
+            "package.json"
+            ".version-bump.json"
+            "scripts/bump-version.sh"
+            "hooks/hooks.json"
+            "hooks/hooks-cursor.json"
+            "hooks/session-start"
+            "skills/ia/SKILL.md"
+            "skills/using-ia/SKILL.md"
+            "CLAUDE.md"
+            "AGENTS.md"
+            "GEMINI.md"
+            "LICENSE"
+            "README.md"
+            "CHANGELOG.md"
+          )
+          fail=0
+          for f in "${required[@]}"; do
+            if [[ ! -e "$f" ]]; then
+              echo "::error::Missing required file: $f"
+              fail=1
+            fi
+          done
+          exit $fail
+
+      - name: Verify version consistency across manifests
+        run: |
+          set -euo pipefail
+          declare -A versions
+          while IFS= read -r entry; do
+            path=$(echo "$entry" | jq -r '.path')
+            field=$(echo "$entry" | jq -r '.field')
+            jq_path=$(echo "$field" | sed -E 's/\.([0-9]+)/[\1]/g')
+            ver=$(jq -r ".${jq_path}" "$path" 2>/dev/null || echo "")
+            if [[ -z "$ver" || "$ver" == "null" ]]; then
+              echo "::warning file=$path::version field '$field' missing"
+              continue
+            fi
+            versions["$ver"]+="$path "
+          done < <(jq -c '.files[]' .version-bump.json)
+          if [[ ${#versions[@]} -gt 1 ]]; then
+            echo "::error::Version mismatch across manifests:"
+            for v in "${!versions[@]}"; do
+              echo "  $v -> ${versions[$v]}"
+            done
+            exit 1
+          fi
+          for v in "${!versions[@]}"; do echo "All manifests on version: $v"; done

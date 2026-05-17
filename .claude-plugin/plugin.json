@@ -1,0 +1,16 @@
+{
+  "name": "ia",
+  "version": "1.0.0",
+  "description": "IBM i Impact Analysis — dependency tracing, field impact, call hierarchy, program documentation.",
+  "homepage": "https://github.com/Programmersio-IBMi/skills",
+  "license": "MIT",
+  "author": {
+    "name": "programmers.io",
+    "email": "support@programmers.io",
+    "url": "https://programmers.io"
+  },
+  "skills": [
+    "./skills/ia",
+    "./skills/using-ia"
+  ]
+}
