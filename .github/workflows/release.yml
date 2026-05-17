@@ -44,24 +44,20 @@ jobs:
           fi
 
       - name: Extract release notes from CHANGELOG
-        id: notes
         run: |
           set -euo pipefail
           version="${{ steps.vars.outputs.version }}"
-          notes=$(awk -v ver="$version" '
+          awk -v ver="$version" '
             BEGIN { capture = 0 }
             $0 ~ "^## \\[?" ver "\\]?" { capture = 1; next }
             capture && /^## / { exit }
             capture { print }
-          ' CHANGELOG.md)
-          if [[ -z "$notes" ]]; then
-            notes="Release v$version"
+          ' CHANGELOG.md > /tmp/release-notes.md
+          if [[ ! -s /tmp/release-notes.md ]]; then
+            echo "Release v$version" > /tmp/release-notes.md
           fi
-          {
-            echo "notes<<RELEOF"
-            echo "$notes"
-            echo "RELEOF"
-          } >> "$GITHUB_OUTPUT"
+          echo "--- Notes ---"
+          cat /tmp/release-notes.md
 
       - name: Create GitHub Release
         env:
@@ -69,4 +65,4 @@ jobs:
         run: |
           gh release create "v${{ steps.vars.outputs.version }}" \
             --title "v${{ steps.vars.outputs.version }}" \
-            --notes "${{ steps.notes.outputs.notes }}"
+            --notes-file /tmp/release-notes.md
