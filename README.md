@@ -18,6 +18,14 @@ Agent skills for **IBM i**. Drop-in plugins for Claude Code, GitHub Copilot, Cur
 /plugin install ia@skills
 ```
 
+### IBM Bob
+
+```
+npx skills add programmersio-ibmi/skills
+```
+
+Installs to `.bob/skills/` in the current project. Add `-g` to install globally to `~/.bob/skills/` and use across all your Bob projects.
+
 ### Gemini CLI
 
 ```
