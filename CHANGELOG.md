@@ -5,6 +5,13 @@ All notable changes to this project are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.1] — 2026-06-02
+
+### Removed
+
+- Session-start hooks (Claude Code, Cursor, GitHub Copilot CLI). They ran `bash hooks/session-start`, which errored on startup in any environment without `bash` on `PATH` (e.g. Windows without Git Bash or WSL).
+- `using-ia` bootstrap meta-skill. It only loaded via the session-start hook, so it no longer served a purpose; the `ia` skill's own description drives discovery.
+
 ## [1.0.0] — 2026-05-17
 
 ### Added

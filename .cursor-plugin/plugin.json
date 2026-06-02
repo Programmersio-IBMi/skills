@@ -1,11 +1,10 @@
 {
   "name": "ia",
   "displayName": "iA — IBM i Impact Analysis",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "IBM i Impact Analysis — dependency tracing, field impact, call hierarchy, program documentation.",
   "publisher": "programmersio",
   "homepage": "https://github.com/programmersio-ibmi/skills",
   "license": "MIT",
-  "skills": "./skills/",
-  "hooks": "./hooks/hooks-cursor.json"
+  "skills": "./skills/"
 }

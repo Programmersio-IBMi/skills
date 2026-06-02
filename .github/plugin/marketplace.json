@@ -8,7 +8,7 @@
   "plugins": [
     {
       "name": "ia",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "description": "IBM i Impact Analysis — dependency tracing, field impact, call hierarchy, program documentation.",
       "source": "./"
     }
