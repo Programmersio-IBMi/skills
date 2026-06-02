@@ -1,4 +1,4 @@
-# iA Tool Catalog (50 Tools)
+# iA Tool Catalog (51 Tools)
 
 **Rule:** Prefer the dedicated `ia_*` tools.
 
@@ -7,10 +7,10 @@
 | Tool | Purpose |
 |------|---------|
 | `ia_library_files` | List every file/table in any IBM i library |
-| `ia_object_lookup` | Resolve object name → type, library, attribute (supports `%` wildcards) |
-| `ia_member_lookup` | Source member metadata: existence, file/library/type, timestamps, line counts |
-| `ia_object_list` | Inventory objects by type (`*PGM`, `*SRVPGM`, `*FILE`, ...); optional library filter |
-| `ia_program_summary` | Program overview: metadata, compile info, complexity metrics |
+| `ia_object_lookup` | Resolve object name → type, library, attribute (supports `%` wildcards). Covers **compiled objects** only; if empty, try `ia_member_lookup` for source-only members |
+| `ia_member_lookup` | Source member metadata: existence, file/library/type, timestamps, line counts. Pass the bare name for an exact match (names shorter than 10 chars now resolve); add `%` only for prefix/substring search |
+| `ia_object_list` | Inventory objects by type (`*PGM`, `*SRVPGM`, `*FILE`, ...); optional library filter. List **all display files** with `object_type=*FILE, object_attribute=DSPF` (no `*DSPF` type exists). For physical files, `pf_kind` labels each row Data PF / Source PF; filter `object_attribute=PF-DATA` or `PF-SRC` for one kind |
+| `ia_program_summary` | Program overview: metadata, compile info, module type, complexity metrics |
 | `ia_program_spec_bundle` | **One-call spec inventory** — LOOKUP/COMPLEXITY/FILES/CALLS/PARAMS/BINDINGS (replaces 7 calls) |
 | `ia_program_detail` | Deep structural analysis with section filtering: CALLS, FILES, SUBROUTINES, VARIABLES, OVERRIDES, CALL_PARAMS |
 | `ia_dashboard` | Repo health summary: categories, line counts, library map |
@@ -29,16 +29,16 @@
 
 | Tool | Purpose |
 |------|---------|
-| `ia_call_hierarchy` | Returns callers and/or callees for a program or module |
-| `ia_call_parameters` | Parameters passed at each external call site |
-| `ia_circular_deps` | Detect two-way circular call chains |
+| `ia_call_hierarchy` | Returns callers and/or callees for a program or module; follows `*MENU`→`*PGM` so menu-launched programs appear |
+| `ia_call_parameters` | Parameters passed at each external call site; includes `call_line` + `call_type`. Same callee on different `call_line`s = multiple call sites, not duplicate rows |
+| `ia_circular_deps` | Detect circular dependencies: SELF recursion (A→A) + MUTUAL (A↔B); returns cycle_type + source_table columns |
 
 ## Program Internals
 
 | Tool | Purpose |
 |------|---------|
-| `ia_program_variables` | All variables declared in a member (type, length, DS flag) |
-| `ia_data_structures` | Data structure definitions and subfields |
+| `ia_program_variables` | All variables declared in a member; `variable_type` is readable scope/kind (Global/Local/Program variable, Constant, Compile-time/Pre-runtime/Run-time array) |
+| `ia_data_structures` | Data structure definitions and subfields; `ds_type` is readable (Externally described / Internally described / Based) |
 | `ia_subroutines` | BEGSR/EXSR with usage counts (dead-subroutine detection); filter by member/library |
 
 ## Files & Overrides
@@ -48,6 +48,7 @@
 | `ia_file_fields` | Field-level metadata: names, aliases, types, lengths, key sequence, reference chain |
 | `ia_field_reffld_consumers` | Inverse of `ia_file_fields`: only the fields **referenced as REFFLD by other files**, with consumer file/field/type info (use this for "which fields in CUSTMST are reused as templates?") |
 | `ia_file_dependencies` | LFs, indexes, views dependent on a physical file. Bifurcated by SQL kind (`SQL_OBJECT_TYPE` = INDEX/VIEW/TABLE/MQT/DDS_LF). Use `dependent_kind` to filter. |
+| `ia_join_logical_files` | Join logical files and their join structure: which physical files each join LF combines and the join field pairs. Pass `file_name` to find join LFs over a specific file (returns the full join), or `*ALL` to list all. |
 | `ia_file_constraints` | DB constraints (PK/UQ/FK/CHK) + LF select/omit rules in one call. Use `kind` to narrow (SELECT_OMIT, FOREIGN_KEY, etc.) |
 | `ia_file_overrides` | OVRDBF statements — real file routing vs. declared F-spec |
 | `ia_override_chain` | Chained OVRDBF dependencies (A→B→C) |
@@ -70,7 +71,7 @@
 | `ia_object_lifecycle` | Creation/change/last-used dates, days-used count |
 | `ia_obj_size` | Object size + usage category (Never/Rare) — lookup or rank |
 | `ia_code_complexity` | IF/DO/SQL/GOTO/PROC counts, executable lines; includes LIBRARY_NAME |
-| `ia_unused_objects` | Dead code candidates (compiled but never referenced) |
+| `ia_unused_objects` | Dead code candidates (compiled but never referenced); source physical files are excluded and each row shows `OBJECT_ATTRIBUTE` |
 | `ia_uncompiled_sources` | Orphaned sources (never compiled into objects) |
 | `ia_dds_to_ddl_status` | DDS→DDL modernization tracking |
 | `ia_exception_log` | iA parser errors per member |
@@ -88,5 +89,6 @@
 | `ia_variable_ops` | Variable declarations, assignments, BIF usage; `*ALL` for cross-member |
 | `ia_klist_usage` | KLIST/KFLD key list definitions; `%` wildcards in kfld_name |
 | `ia_application_area` | Forward: area → objects; Reverse: object → areas (`%` supported) |
-| `ia_sql_names` | SQL long/short name mapping |
+| `ia_sql_names` | SQL long/short name mapping for **routines** (procedures/functions) |
+| `ia_sql_table_names` | SQL long↔short name mapping for **tables + columns** (`CREATE TABLE ... FOR SYSTEM NAME`); resolve a long name to its 10-char system name before where-used. Complements `ia_sql_names` |
 | `ia_program_files` | Program file usage with PREFIX/RENAME; filter by member/library |
