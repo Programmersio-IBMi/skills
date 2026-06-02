@@ -31,10 +31,12 @@ except ImportError:
     print("Install with: pip install reportlab")
     sys.exit(1)
 
+# ── Constants ────────────────────────────────────────────────────────────
 PAGE_W, PAGE_H = A4
 MARGIN = 2.0 * cm
 CONTENT_W = PAGE_W - 2 * MARGIN
 
+# Professional color palette
 C_PRIMARY   = colors.HexColor('#1a365d')
 C_SECONDARY = colors.HexColor('#2c5282')
 C_ACCENT    = colors.HexColor('#3182ce')
@@ -50,18 +52,20 @@ C_INLINE_CODE = colors.HexColor('#c7254e')
 C_CODE_TEXT   = colors.HexColor('#2d3748')
 C_BLOCKQUOTE = colors.HexColor('#4a5568')
 
+# Unicode character replacements for PDF compatibility
 CHAR_REPLACEMENTS = {
-    '⚠️': '⚠', '✅': '✓', '❌': '✗',
+    '\u26a0\ufe0f': '\u26a0', '\u2705': '\u2713', '\u274c': '\u2717',
     '\U0001f4c4': '[DOC]', '\U0001f4ca': '[CHART]', '\U0001f50d': '[FIND]',
     '\U0001f4cb': '[LIST]', '\U0001f4a1': '[TIP]', '\U0001f527': '[TOOL]',
     '\U0001f4cc': '[PIN]', '\U0001f3af': '[TARGET]', '\U0001f680': '[LAUNCH]',
-    '–': '--', '—': '---', '‘': "'", '’': "'",
-    '“': '"', '”': '"', '…': '...', '←': '<-', '→': '->',
-    '×': 'x', '•': '•', '●': '●', '○': '○',
-    '☐': '☐', '☑': '☑', '✓': '✓', '✗': '✗',
+    '\u2013': '--', '\u2014': '---', '\u2018': "'", '\u2019': "'",
+    '\u201c': '"', '\u201d': '"', '\u2026': '...', '\u2190': '<-', '\u2192': '->',
+    '\u00d7': 'x', '\u2022': '•', '\u25cf': '●', '\u25cb': '○',
+    '\u2610': '☐', '\u2611': '☑', '\u2713': '✓', '\u2717': '✗',
 }
 
 def sanitize_text(text: str) -> str:
+    """Replace characters that don't render well in standard PDF fonts."""
     if not text:
         return text
     for bad, good in CHAR_REPLACEMENTS.items():
@@ -69,10 +73,12 @@ def sanitize_text(text: str) -> str:
     return ''.join(ch if ord(ch) < 128 else '?' for ch in text)
 
 def inline_md_to_xml(text: str) -> str:
+    """Convert inline markdown formatting to reportlab XML tags."""
     if not text:
         return text
     text = sanitize_text(text)
-
+    
+    # Extract inline code spans first (protect from bold/italic regex)
     code_spans = []
     def save_code(m):
         idx = len(code_spans)
@@ -83,23 +89,29 @@ def inline_md_to_xml(text: str) -> str:
         )
         return f'\x00C{idx}\x00'
     text = re.sub(r'`(.+?)`', save_code, text, flags=re.DOTALL)
-
+    
+    # Bold + italic, then bold, then italic
     text = re.sub(r'\*\*\*(.+?)\*\*\*', r'<b><i>\1</i></b>', text)
     text = re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', text)
     text = re.sub(r'(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)', r'<i>\1</i>', text)
+    # Links: [text](url)
     text = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'<font color="#3182ce"><u>\1</u></font>', text)
-    text = re.sub(r'- \[x\] ', '☑ ', text, flags=re.IGNORECASE)
-    text = re.sub(r'- \[ \] ', '☐ ', text)
+    # Checkboxes
+    text = re.sub(r'- \[x\] ', '\u2611 ', text, flags=re.IGNORECASE)
+    text = re.sub(r'- \[ \] ', '\u2610 ', text)
+    # Restore code spans
     for idx, code in enumerate(code_spans):
         text = text.replace(f'\x00C{idx}\x00', code)
     return text
 
+# ── Table Parsing ────────────────────────────────────────────────────────
 def is_table_separator(line: str) -> bool:
     line = line.strip()
     return line.startswith('|') and line.endswith('|') and \
            all(re.match(r'^[\s\-:]+$', c) for c in [c.strip() for c in line.split('|')[1:-1]])
 
 def parse_md_table(lines: List[str], start_idx: int) -> Tuple[List[List[str]], int]:
+    """Parse markdown table starting at start_idx. Returns (rows, next_idx)."""
     rows = []
     idx = start_idx
     while idx < len(lines):
@@ -140,6 +152,7 @@ def calc_col_widths(rows: List[List[str]], avail_w: float) -> List[float]:
                     widths[j] = max(min_w, widths[j] - deficit / len(others))
     return widths
 
+# ── Style Definitions ────────────────────────────────────────────────────
 def make_styles():
     base = getSampleStyleSheet()
     return {
@@ -186,6 +199,7 @@ def make_styles():
             fontName='Helvetica-Bold', textColor=colors.white, alignment=TA_CENTER),
     }
 
+# ── Custom Flowables ─────────────────────────────────────────────────────
 class SectionRule(HRFlowable):
     def __init__(self, color=C_RULE, thickness=1.5, width='100%'):
         HRFlowable.__init__(self, width=width, thickness=thickness, color=color, spaceAfter=8, spaceBefore=4)
@@ -233,6 +247,7 @@ class CodeBlockFlowable(Flowable):
             c.drawString(pad, y, row)
             y -= line_h
 
+# ── Page Templates ───────────────────────────────────────────────────────
 class DocTemplate(BaseDocTemplate):
     def __init__(self, filename, **kwargs):
         super().__init__(filename, **kwargs)
@@ -286,6 +301,7 @@ class DocTemplate(BaseDocTemplate):
             c.drawRightString(PAGE_W - MARGIN, MARGIN - 16, f"Page {page_num}")
         c.restoreState()
 
+# ── Metadata Extraction ──────────────────────────────────────────────────
 def extract_metadata(md_content: str) -> Tuple[OrderedDict, int]:
     meta = OrderedDict()
     lines = md_content.split('\n')
@@ -323,6 +339,7 @@ def extract_title(md_content: str) -> str:
             return line[2:].strip()
     return 'Technical Specification'
 
+# ── List Parsing ─────────────────────────────────────────────────────────
 def parse_list(lines: List[str], start_idx: int, ordered: bool) -> Tuple[List[Dict], int]:
     items = []
     idx = start_idx
@@ -341,12 +358,14 @@ def parse_list(lines: List[str], start_idx: int, ordered: bool) -> Tuple[List[Di
             if not m:
                 break
             items.append({'level': indent_level, 'text': m.group(3)})
+        # Handle multi-line list items
         while idx + 1 < len(lines) and (lines[idx + 1].startswith(' ') or lines[idx + 1].startswith('\t')):
             idx += 1
             items[-1]['text'] += ' ' + lines[idx].strip()
         idx += 1
     return items, idx
 
+# ── Markdown to PDF Elements ─────────────────────────────────────────────
 def md_to_pdf_elements(md_content: str, doc_title: str = '') -> List[Flowable]:
     styles = make_styles()
     elements = []
@@ -360,6 +379,7 @@ def md_to_pdf_elements(md_content: str, doc_title: str = '') -> List[Flowable]:
         if not line:
             i += 1
             continue
+        # Headings
         if line.startswith('###### '):
             elements.append(Paragraph(inline_md_to_xml(line[7:].strip()), styles['h6']))
             i += 1
@@ -384,10 +404,12 @@ def md_to_pdf_elements(md_content: str, doc_title: str = '') -> List[Flowable]:
         elif line.startswith('# '):
             i += 1
             continue
+        # Horizontal Rule
         elif line.strip() in ['---', '***', '___']:
             elements.append(Spacer(1, 0.2 * cm))
             elements.append(ThinRule())
             i += 1
+        # Code Block
         elif line.strip().startswith('```'):
             lang = line.strip()[3:].strip()
             code_lines = []
@@ -398,6 +420,7 @@ def md_to_pdf_elements(md_content: str, doc_title: str = '') -> List[Flowable]:
             i += 1
             if code_lines:
                 elements.append(CodeBlockFlowable('\n'.join(code_lines), lang))
+        # Table
         elif line.strip().startswith('|'):
             rows, new_idx = parse_md_table(lines, i)
             if rows:
@@ -408,6 +431,7 @@ def md_to_pdf_elements(md_content: str, doc_title: str = '') -> List[Flowable]:
                 elements.append(Spacer(1, 4))
             i = new_idx
             continue
+        # Blockquote
         elif line.strip().startswith('>'):
             quote_lines = []
             while i < len(lines) and lines[i].strip().startswith('>'):
@@ -415,6 +439,7 @@ def md_to_pdf_elements(md_content: str, doc_title: str = '') -> List[Flowable]:
                 i += 1
             if quote_lines:
                 elements.append(Paragraph('<br/>'.join(quote_lines), styles['quote']))
+        # Unordered List
         elif re.match(r'^[\s]*[-*+] ', line):
             list_items, new_idx = parse_list(lines, i, ordered=False)
             for item in list_items:
@@ -428,6 +453,7 @@ def md_to_pdf_elements(md_content: str, doc_title: str = '') -> List[Flowable]:
                     elements.append(Paragraph(f'    ▪ {text}', styles['bullet3']))
             i = new_idx
             continue
+        # Ordered List
         elif re.match(r'^[\s]*\d+\.\s', line):
             list_items, new_idx = parse_list(lines, i, ordered=True)
             for item in list_items:
@@ -442,6 +468,7 @@ def md_to_pdf_elements(md_content: str, doc_title: str = '') -> List[Flowable]:
                     elements.append(Paragraph(f'        {num}. {text}', styles['number3']))
             i = new_idx
             continue
+        # Regular Paragraph
         else:
             para_lines = []
             while i < len(lines) and lines[i].strip() and \
@@ -505,6 +532,7 @@ def create_table(rows: List[List[str]]) -> Optional[Table]:
     table.setStyle(TableStyle(style))
     return table
 
+# ── Main Conversion ─────────────────────────────────────────────────────
 def convert_md_to_pdf(md_file: str, pdf_file: str = None) -> str:
     try:
         with open(md_file, 'r', encoding='utf-8') as f:
@@ -564,6 +592,7 @@ def build_cover(meta: OrderedDict, title_text: str, styles: dict) -> List[Flowab
             elements.append(Spacer(1, 0.15 * cm))
     return elements
 
+# ── CLI ──────────────────────────────────────────────────────────────────
 def main():
     parser = argparse.ArgumentParser(description='Convert Markdown to PDF with professional formatting')
     parser.add_argument('input', help='Input Markdown file')

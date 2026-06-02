@@ -27,7 +27,7 @@
 | Suspect file routing | `ia_file_overrides`, `ia_override_chain` | Detect OVRDBF redirection |
 | Stale / stale-looking object | `ia_object_lifecycle` | Check last-used date and days-used count |
 | Large or rarely-used objects (capacity/cleanup) | `ia_obj_size` | Rank by size, filter by usage_category (Never/Rare) |
-| High-risk program to refactor | `ia_code_complexity` | Get IF/DO/SQL/GOTO counts and line totals |
+| High-risk program to refactor | `ia_code_complexity` | Rank by weighted score (`GOTO×5 + CAB×5 + IF×1 + SQL×0.5`), not TOTAL_LINES — large+linear is healthier than small+spaghetti |
 | Circular call suspicion | `ia_circular_deps` | Detect two-way call pairs |
 | Cleanup candidates | `ia_unused_objects` | Objects with zero references |
 
@@ -84,14 +84,22 @@ Call `ia_program_variables` → Group: standalone fields, DS subfields (likely D
 `ia_file_dependencies(file_name=X)` → Returns LFs, indexes, views, MQTs over the physical, bifurcated by `SQL_OBJECT_TYPE` (INDEX/VIEW/TABLE/MQT/DDS_LF). Use `dependent_kind` to filter → Chain `ia_find_object_usages` on each logical of interest to find programs referencing it.
 
 ### P8: "Find dead code"
-**Compiled objects:** `ia_unused_objects` for objects with zero refs → `ia_object_lifecycle` to confirm last-used date → `ia_dashboard` to cross-check category → Always flag members that may be scheduler-invoked.
+**Compiled objects (5-step chain — don't stop at step 1):**
+1. `ia_unused_objects(object_type='*PGM')` — baseline zero-reference candidates.
+2. `ia_cl_jobs(call_type='SBMJOB')` — every CL-side scheduled program. **Subtract** these `called_program` names from step 1.
+3. `ia_rpg_source_search(search_text='SBMJOB')` — RPGs that submit jobs (less common but real). Subtract any matches.
+4. `ia_object_lifecycle` on the survivors — confirm `LASTUSED_DATE` is old.
+5. `ia_find_object_usages` as a final sanity check before recommending DELETE — `LASTUSED_DATE` can lag for cold-stored objects and `ia_unused_objects` misses QCMDEXC dynamic calls.
+
+**Why the chain:** Step 2 typically removes ~40-50% of step 1's candidates — they ARE used, just scheduler-invoked. Never recommend DELETE on lifecycle or unused-objects alone; always surface the QCMDEXC caveat as an unresolved residual risk.
+
 **Orphaned sources:** `ia_uncompiled_sources` for source members never compiled into objects → Check LAST_CHANGED date to identify abandoned development.
 
 ### P9: "Where does this program actually write?"
 `ia_file_overrides` for the member → If overrides exist, also run `ia_override_chain` → Combine with `ia_find_object_usages` on each resolved target file to confirm downstream impact.
 
 ### P10: "What programs include this copybook?" (Copybook Impact)
-`ia_copybook_impact(copybook_name="CUSTDS")` → Returns all members with /COPY directive + line numbers → Group by member_type (RPGLE, SQLRPGLE, CBLLE) → Flag: high count = high-risk copybook change.
+`ia_copybook_impact(copybook_name="CUSTDS")` → Returns all members with /COPY directive + line numbers → Group by member_type (RPGLE, SQLRPGLE, CBLLE) → **Present the result as an explicit recompile list** (one member per line) so the user can pipe it into their build. Flag SQLRPGLE consumers highest risk (embedded SQL may shift behavior on field-layout change); high total count = phased recompile.
 
 ### P11: "What does this service program export?" (API Surface)
 `ia_srvpgm_exports(object_name="MYSRVPGM", procedure_type="EXPORT")` → Lists all exported procedures → Chain `ia_procedure_xref` on specific procedures to find callers → For parameter signatures, use `ia_procedure_params`.
@@ -111,6 +119,9 @@ Call `ia_program_variables` → Group: standalone fields, DS subfields (likely D
 ### P16: "Resolve SQL long name to system name"
 `ia_sql_names(name_pattern="STORE%")` → Maps SQL long names ↔ 10-char system names → Essential for SQL procedure/function analysis.
 
+### P16b: "Resolve a SQL long table/column name (and trace its usage)"
+`ia_sql_table_names(name_pattern="AI_AUDIT_LOG")` → object + column long↔short map (datatype/length, source member) for `CREATE TABLE ... FOR SYSTEM NAME` tables → To trace usage of a long-named table, take `system_short_name` and chain to `ia_find_object_usages` / `ia_file_field_impact_analysis` — the cross-reference only knows the 10-char system name. Complements `ia_sql_names` (routines).
+
 ### P17: "What happens if I change this service program?" (SRVPGM Impact)
 Service programs are **cascade amplifiers** — changes affect all binding programs.
 
@@ -129,6 +140,20 @@ Service programs are **cascade amplifiers** — changes affect all binding progr
 | 20+ | High | Phased rollout with regression testing |
 
 **Signature changes** (adding/removing/retyping parameters) require **recompile of ALL consumers**. Adding new procedures is safe; removing procedures breaks callers.
+
+### P18: "Orphaned + tangled — refactor or archive triage" (Quadrant Analysis)
+Cross-tool chain for modernization audits. Splits programs into 4 quadrants by usage age × complexity.
+
+1. `ia_code_complexity(member_name='*ALL', limit=200)` → score each row: `GOTO×5 + CAB×5 + CAS×5 + IF×1 + SQL×0.5`. High score = tangled.
+2. `ia_object_lifecycle` on the top-scoring candidates → read `LASTUSED_DATE`.
+3. Classify each program into one of four quadrants:
+   - **Active & Clean** (recent + low score) — leave alone.
+   - **Active & Tangled** (recent + high score) — refactor priority.
+   - **Sleeping & Clean** (old + low score) — archive candidate.
+   - **Orphaned & Toxic** (old + high score) — audit FIRST, then archive.
+4. For any "Orphaned & Toxic" candidate, validate with `ia_find_object_usages` before recommending deletion — `LASTUSED_DATE` alone is not delete-safe.
+
+**Why this matters:** Modernization-scope studies show isolating "Orphaned & Toxic" can cut effective refactor scope ~30%. The quadrant verdict is the deliverable, not the raw table.
 
 ## Risk Rubric
 

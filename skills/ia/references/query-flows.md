@@ -53,9 +53,13 @@ This reference documents optimal tool sequences for common queries. Follow these
 **Efficient approach:**
 ```
 1. ia_unused_objects(object_type="*PGM", limit=100) → Zero-reference compiled objects
-2. ia_uncompiled_sources(member_type="RPGLE", limit=100) → Orphaned sources never compiled
-3. ia_code_complexity(member_name="*ALL", limit=50) → Also shows CALLED_BY_COUNT (0 = dead)
+2. ia_cl_jobs(call_type="SBMJOB", limit=500)        → Subtract these called_program names from step 1 — they ARE used (scheduler-invoked)
+3. ia_rpg_source_search(search_text="SBMJOB", limit=500) → RPG-side SBMJOB sites; also subtract
+4. ia_uncompiled_sources(member_type="RPGLE", limit=100) → Orphaned sources never compiled
+5. ia_code_complexity(member_name="*ALL", limit=50) → Also shows CALLED_BY_COUNT (0 = dead)
 ```
+
+**Critical:** Steps 2-3 are mandatory before recommending any DELETE — cross-referencing with `ia_cl_jobs` typically removes ~40-50% of step 1's "unused" entries (they're SBMJOB-invoked). QCMDEXC dynamic calls remain undetectable; surface this as residual risk.
 
 **No need to chain** `ia_object_lifecycle` for every object — the unused_objects query already confirms zero references. Only check lifecycle for specific objects the user wants to investigate.
 
@@ -116,12 +120,20 @@ Returns CALLS, FILES, SUBROUTINES, VARIABLES, OVERRIDES, CALL_PARAMS in ONE quer
 
 **Single query:**
 ```
-ia_code_complexity(member_name="*ALL", limit=20)
+ia_code_complexity(member_name="*ALL", limit=200)
 ```
 
-Returns: IF_COUNT, DO_COUNT, SQL_COUNT, GOTO_COUNT, CALLED_BY_COUNT, TOTAL_OPERATIONS — all complexity metrics in one call.
+Returns: IF_COUNT, DO_COUNT, SQL_COUNT, GOTO_COUNT, CAB_COUNT, CAS_COUNT, CALLED_BY_COUNT, TOTAL_OPERATIONS — all complexity metrics in one call.
 
-**Only drill deeper** on specific programs the user identifies as concerning.
+**Default sort is TOTAL_LINES DESC — re-rank in synthesis.** Lines alone are misleading: a 5,000-line SQL-heavy program can be healthier than a 1,000-line GOTO-spaghetti program. Apply this weighted score per row:
+
+```
+score = GOTO_COUNT*5 + CAB_COUNT*5 + CAS_COUNT*5 + IF_COUNT*1 + DO_COUNT*1 + SQL_COUNT*0.5
+```
+
+Present top N by `score`, not by `TOTAL_LINES`. Tie-break with `CALL_PGM_COUNT` (more callers = higher refactor priority because impact-amplification).
+
+**Only drill deeper** on specific programs the user identifies as concerning. Pair with `ia_object_lifecycle` to spot "orphaned + tangled" (see playbook P18).
 
 ---
 
@@ -240,11 +252,24 @@ ia_application_area(object_name="%CUST%")   → Wildcard: areas with any CUST* o
 
 ### QF-18: "SQL name resolution"
 
-**Single query:**
+**Routines (procedures/functions):**
 ```
 ia_sql_names(name_pattern="STORE%", limit=50)
 ```
-Returns: SQL long names ↔ 10-char system names mapping.
+Returns: SQL long names ↔ 10-char system names for procedures/functions.
+
+**Tables & columns:**
+```
+ia_sql_table_names(name_pattern="CUSTOMER%")
+```
+Returns: object + column long↔short names, datatype/length, source member — for `CREATE TABLE ... FOR SYSTEM NAME` objects.
+
+**Chain — where-used by a SQL long name:**
+```
+1. ia_sql_table_names(name_pattern="AI_AUDIT_LOG") → system_short_name = AI_AU00001
+2. ia_find_object_usages(object_name="AI_AU00001")  → programs/LFs referencing it
+```
+The where-used cross-reference (and `ia_object_lookup` / `ia_file_field_impact_analysis`) store only the 10-char system name and cap input at 10 chars, so resolve the long name first.
 
 ---
 
@@ -400,6 +425,9 @@ User Question
 | `ia_program_summary` + `ia_program_variables` + `ia_subroutines` | Three queries for one program | Use `ia_program_detail section=*ALL` |
 | `ia_object_lifecycle` for every unused object | Unnecessary — unused_objects already confirms zero refs | Only check lifecycle for specific objects |
 | Chaining to `ia_call_hierarchy` for every *PGM result | Overkill — most programs don't need deep analysis | Only chain for *SRVPGM or critical programs |
+| Ranking complexity by TOTAL_LINES only | Large+linear is healthier than small+GOTO-spaghetti | Weighted score: `GOTO×5 + CAB×5 + IF×1 + SQL×0.5` (see QF-8) |
+| Recommending DELETE from `ia_unused_objects` alone | Misses SBMJOB / QCMDEXC scheduler-invoked programs (~40-50% false positives) | Always cross-reference `ia_cl_jobs` + `ia_rpg_source_search('SBMJOB')` first |
+| Recommending DELETE from `ia_object_lifecycle` alone | LASTUSED_DATE can lag for cold-stored objects | Always verify with `ia_find_object_usages` before any deletion recommendation |
 
 ---
 

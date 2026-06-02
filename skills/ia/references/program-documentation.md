@@ -9,7 +9,7 @@ Use this guide whenever a user asks for a **technical program document** for an 
 **Every new document must be generated from scratch using live iA tool output only.** Before, during, and after generation:
 
 - **Do NOT read any existing `.md` / `.docx` / `.pdf` under `docs/program-specs/`** — not for the target program, not for any other program, not for "style reference" or "tone." Treat the contents of every prior doc as off-limits.
-- The **only** permitted use of `docs/program-specs/{PROGRAM_NAME}/` is to **list directory entries** (filenames only) to compute the next `_v{N+1}` suffix per Step 8. Do not open or read any file in that folder.
+- The **only** permitted use of `docs/program-specs/{PROGRAM_NAME}/` is to **list directory entries** (filenames only) and read a file's **last-modified timestamp** (filesystem metadata) — to run the Step 1.5 existence check and confirm the canonical save target. Do not open or read the *contents* of any file in that folder.
 - Do not read other repos' or other audiences' prior outputs as a template either. Templates live exclusively under `references/templates/`.
 - **Why:** Prior drafts may contain stale facts, hallucinations from earlier model runs, or assumptions that no longer match the current source. Reading them contaminates the new document with errors carried forward. Source-of-truth is iA tool output, never a prior document.
 
@@ -71,9 +71,43 @@ Wait for one response, then proceed.
 
 ---
 
-## Step 1.5 — Todo List Kickoff
+## Step 1.5 — Existing Document Check (early gate)
 
-**After Step 1 (audience and template known) and before any `ia_*` MCP call, the agent MUST create a todo list via `TodoWrite` covering the rest of the workflow.** No iA tool call may run before this todo list exists.
+**Runs immediately after Step 1 (DocType known) and BEFORE the Todo kickoff and any `ia_*` call.** Its purpose is to keep **a single canonical copy per (program, doc type)** and to avoid regenerating a document the user already has. Doing this *first* means a decline costs zero iA calls.
+
+**1. Coerce the request to exactly one of four canonical DocType names:**
+
+| User wording (examples) | Canonical DocType | Audience template |
+|---|---|---|
+| "technical spec", "developer doc", "code doc", default | `Technical_Specification` | `template-developer.md` |
+| "functional doc", "business doc", "BA doc", "summary" | `Functional_Document` | `template-business.md` |
+| "ops guide", "runbook", "support doc", "operations" | `Operations_Guide` | `template-operations.md` |
+| "architecture review", "audit", "modernization", "design review" | `Architecture_Review` | `template-architect.md` |
+
+If the request matches none, tell the user which canonical type you chose and why; if it's genuinely ambiguous, ask them to pick one. A multi-type request ("all four", "tech spec and functional doc") runs this whole gate **once per DocType**.
+
+**2. List the program folder ROOT ONLY** — `ls docs/program-specs/{PROGRAM_NAME}/` (or platform equivalent). Filenames only; do **not** open any file (Rule Zero). If the folder doesn't exist, treat it as empty and skip to Step 1.6.
+
+**3. Look for the canonical single-copy file** `{PROGRAM_NAME}_{CanonicalDocType}.md` (no version suffix — this is the one copy). Legacy `_v{N}` files and older free-form names (`{PGM}_Specification.md`, `{PGM}_Doc.md`, …) **do not count** for this check and are left strictly in place — never matched, moved, renamed, or deleted.
+
+**4. If the canonical file exists → HARD STOP and ask.** Read its **last-modified date** via a filesystem stat (metadata only — never open the file). Tell the user:
+
+> A **{CanonicalDocType}** for **{PROGRAM_NAME}** already exists (last generated **{YYYY-MM-DD}**): [{filename}](docs/program-specs/{PROGRAM_NAME}/{filename}).
+> Do you want me to generate a fresh one? This will **replace** the existing copy.
+
+- **User declines** → stop here, point them at the existing file. **Make no `ia_*` call.**
+- **User confirms** → proceed to Step 1.6; the new document overwrites the canonical file in place at Step 8.
+- **Request already signals regeneration** ("regenerate", "update", "replace", "redo the doc") → treat it as confirmation; skip the prompt, but still tell the user you're replacing the existing copy.
+
+**5. If the canonical file does not exist → proceed to Step 1.6** and generate normally.
+
+**Drafts are exempt:** an explicitly-labelled *draft* request still goes to `docs/program-specs/{PROGRAM_NAME}/drafts/` and is **not** subject to the single-copy / overwrite rule.
+
+---
+
+## Step 1.6 — Todo List Kickoff
+
+**After Step 1.5 (existing-doc check passed — the user either has no canonical doc or confirmed a regenerate) and before any `ia_*` MCP call, the agent MUST create a todo list via `TodoWrite` covering the rest of the workflow.** No iA tool call may run before this todo list exists.
 
 **Why:** Program documentation is a 9-step workflow with branching tool calls and conditional sub-steps. Without an explicit plan, agents drop verification, invent filenames, or skip the fields lookup. The todo list is both a contract with the user and the agent's own self-checklist.
 
@@ -87,8 +121,8 @@ Wait for one response, then proceed.
 - Step 5: Assemble document sections per template
 - Step 6: Render call hierarchy + ASCII process flow tree(s)
 - Step 7: Run Verification Rules pass
-- Step 7.5: Filename Resolution Gate (list folder, coerce DocType, compute _v{N})
-- Step 8: Save to docs/program-specs/{PGM}/{filename}
+- Step 7.5: Filename Resolution Gate (confirm canonical {PGM}_{DocType}.md target)
+- Step 8: Save to docs/program-specs/{PGM}/{filename} (overwrite if regenerate confirmed in Step 1.5)
 - Step 9: Export to DOCX/PDF (only on user request)
 ```
 
@@ -442,50 +476,30 @@ Fix all **ERRORs** before delivery. Present **WARNINGs** with notes in the quali
 
 ## Step 7.5 — Filename Resolution Gate
 
-**Mandatory gate between Step 7 (Verification) and Step 8 (Save). The agent MUST run this algorithm to produce the output filename. Step 8 consumes that filename verbatim — never compute it inline.**
+**Mandatory gate between Step 7 (Verification) and Step 8 (Save). It produces the one save target. Step 8 consumes that filename verbatim — never compute it inline.**
 
-### Inputs
-
-- `PROGRAM_NAME` — the program being documented.
-- User-requested DocType wording (or empty → default `Technical_Specification`).
-
-### Output
-
-Exactly one absolute filename:
+The canonical **single-copy** filename is:
 
 ```
-docs/program-specs/{PROGRAM_NAME}/{PROGRAM_NAME}_{CanonicalDocType}_v{N}.md
+docs/program-specs/{PROGRAM_NAME}/{PROGRAM_NAME}_{CanonicalDocType}.md
 ```
 
-### Algorithm (in order, mandatory)
+where `{CanonicalDocType}` was already coerced in **Step 1.5** (one of `Technical_Specification`, `Functional_Document`, `Operations_Guide`, `Architecture_Review`). There is **no version suffix** — each (program, doc type) pair has exactly one file.
 
-**1. Coerce the requested DocType to exactly one of four canonical names:**
+### Algorithm
 
-| User wording (examples) | Canonical DocType | Audience template |
-|---|---|---|
-| "technical spec", "developer doc", "code doc", default | `Technical_Specification` | `template-developer.md` |
-| "functional doc", "business doc", "BA doc", "summary" | `Functional_Document` | `template-business.md` |
-| "ops guide", "runbook", "support doc", "operations" | `Operations_Guide` | `template-operations.md` |
-| "architecture review", "audit", "modernization", "design review" | `Architecture_Review` | `template-architect.md` |
-
-If the request matches none, the agent must tell the user which canonical type it chose and why. If the choice is genuinely ambiguous, ask the user to pick one of the four.
-
-**2. List the program folder ROOT ONLY.** Run `ls docs/program-specs/{PROGRAM_NAME}/` (or platform equivalent). Do **not** descend into `drafts/`, `Archive/`, or any other subdirectory. If the folder does not exist, treat the listing as empty (the folder will be created at save time).
-
-**3. Filter to canonical pattern only.** Keep only files matching the regex `^{PROGRAM_NAME}_{CanonicalDocType}_v(\d+)\.md$`. Discard everything else, including legacy names like `{PGM}_Specification.md`, `{PGM}_Program_Analysis_v5.md`, `{PGM}_Doc.md`, `{PGM}-Functional-Document.md`, and any file without a `_v{N}` suffix.
-
-**4. Compute next version.** `N = max(matched versions) + 1`. If no canonical match exists, `N = 1`.
-
-**5. Emit the filename.** Print it back to the user before any file write: `Writing {PGM}_{CanonicalDocType}_v{N}.md` so they can intervene if the coercion was wrong.
+1. **Reuse the `{CanonicalDocType}` from Step 1.5.** Do not re-coerce — it was already resolved, and any existing copy was already surfaced to the user there.
+2. **Emit the target path** and print it back before any write: `Writing {PGM}_{CanonicalDocType}.md`.
+3. **If that file already exists**, the regenerate was already confirmed at Step 1.5 — Step 8 **overwrites it in place**. If you somehow reached here *without* that confirmation, stop and return to Step 1.5; never overwrite silently.
 
 ### Hard-stop conditions
 
-- **DocType cannot be coerced** → ask the user which of the four canonical types they want; do not pick silently.
-- **Folder listing fails** (permission, IO error) → halt and report; never guess a version number.
+- **DocType was never coerced** (Step 1.5 skipped) → go back and run Step 1.5; do not invent a filename.
+- **Folder listing fails** (permission, IO error) → halt and report.
 
 ### Legacy filename note
 
-Files like `BIO60R_Specification.md`, `IAMENUR_Doc.md`, `CUSTMNTR_Documentation.md`, `ADMINP-Functional-Document.md` are **left strictly in place** — never move, rename, or delete them. They simply don't count toward the version computation.
+Files like `BIO60R_Specification.md`, `IAMENUR_Doc.md`, `{PGM}_Technical_Specification_v2.md`, `ADMINP-Functional-Document.md` are **left strictly in place** — never matched, moved, renamed, or deleted. They are not the canonical single copy and play no part in naming.
 
 ---
 
@@ -524,17 +538,17 @@ Files like `BIO60R_Specification.md`, `IAMENUR_Doc.md`, `CUSTMNTR_Documentation.
 **Save location — use the filename emitted by Step 7.5 verbatim:**
 
 ```
-docs/program-specs/{PROGRAM_NAME}/{PROGRAM_NAME}_{CanonicalDocType}_v{N}.md
+docs/program-specs/{PROGRAM_NAME}/{PROGRAM_NAME}_{CanonicalDocType}.md
 ```
 
-The four canonical DocType names and the versioning algorithm live in **Step 7.5 — Filename Resolution Gate**. Step 8 does not recompute either; it only consumes the filename string Step 7.5 produced.
+The four canonical DocType names are coerced in **Step 1.5**; **Step 7.5 — Filename Resolution Gate** confirms the single-copy target path. Step 8 does not recompute either; it only consumes the filename string Step 7.5 produced.
 
 **Save rules:**
 
 - Create `docs/program-specs/{PROGRAM_NAME}/` if it does not exist. **Do not** save anywhere else (project root, `BIO60R_Program_Analysis.md` style files at repo root are wrong — always use the program subfolder).
-- **Never overwrite an existing file.** If Step 7.5's emitted filename somehow already exists, halt and re-run Step 7.5 — do not silently bump.
-- If the file is an explicitly-labeled draft, save it to `docs/program-specs/{PROGRAM_NAME}/drafts/{PROGRAM_NAME}_{CanonicalDocType}_v{N}_draft.md` instead. Final/canonical iterations go to the subfolder root.
-- Exported formats (`.docx`, `.pdf`) go in the same subfolder as their `.md` source, with the matching `_v{N}` suffix — never in the parent `docs/program-specs/` root.
+- **Single canonical copy per (program, doc type).** If `{PROGRAM_NAME}_{CanonicalDocType}.md` already exists, **overwrite it in place** — but *only* because the user confirmed the regenerate at Step 1.5. If you reach Step 8 and that file exists without a Step 1.5 confirmation, halt and return to Step 1.5; never overwrite silently. If it does not exist, write it fresh.
+- If the file is an explicitly-labeled draft, save it to `docs/program-specs/{PROGRAM_NAME}/drafts/` instead — drafts are iterative and exempt from the single-copy rule. The final/canonical iteration goes to the subfolder root as the single `{PROGRAM_NAME}_{CanonicalDocType}.md`.
+- Exported formats (`.docx`, `.pdf`) go in the same subfolder as their `.md` source, sharing its base name (`{PROGRAM_NAME}_{CanonicalDocType}.docx`) — never in the parent `docs/program-specs/` root. When the `.md` is regenerated, any previously exported `.docx`/`.pdf` of the same name are now stale; a re-export (Step 9) overwrites them. Do not delete them yourself.
 
 **Final footer:** `*Analysis powered by iA from [programmers.io](https://programmers.io/ia/)*`
 
@@ -554,11 +568,11 @@ If the user asks to "export to Word", "save as DOCX", "convert to PDF", "give me
 **Invocation:**
 
 ```bash
-python convert_md_to_docx.py docs/program-specs/{PROGRAM}/{PROGRAM}_Technical_Specification_v{N}.md
-python convert_md_to_pdf.py  docs/program-specs/{PROGRAM}/{PROGRAM}_Technical_Specification_v{N}.md
+python convert_md_to_docx.py docs/program-specs/{PROGRAM}/{PROGRAM}_Technical_Specification.md
+python convert_md_to_pdf.py  docs/program-specs/{PROGRAM}/{PROGRAM}_Technical_Specification.md
 ```
 
-Each script writes its output next to the source `.md` with the `.docx` / `.pdf` extension — the same `docs/program-specs/{PROGRAM}/` subfolder, preserving the `_v{N}` suffix automatically.
+Each script writes its output next to the source `.md` with the `.docx` / `.pdf` extension — the same `docs/program-specs/{PROGRAM}/` subfolder, sharing the source base name. A re-export overwrites the prior same-name `.docx`/`.pdf`, keeping the export in step with the single canonical `.md`.
 
 **Operational rules:**
 
@@ -587,7 +601,7 @@ Each script writes its output next to the source `.md` with the `.docx` / `.pdf`
 | Never omit a functional capability implied by subroutine names | SENDEMAILPROCESS = email; document it even if you can't see the logic |
 | Always state which library version is being documented | Multiple versions often exist with different line counts |
 | Always use the actual library name throughout the deliverable | Leaking placeholder text makes the document look auto-generated and broken. Resolve from LOOKUP/FILES sections. |
-| Always create a new `_v{N+1}` file; never overwrite an existing document | Each request must yield a new artifact so prior iterations are preserved as history |
+| Keep one canonical `{PGM}_{DocType}.md` per doc type; overwrite it only after the user confirmed a regenerate at Step 1.5 | The user wants a single current copy per type, not a version pile-up; an unconfirmed overwrite could discard work they still wanted |
 | Never read any existing document under `docs/program-specs/` | Prior drafts may contain stale facts or hallucinations; re-deriving from iA tools is the only safe source of truth |
 | Always call `ia_file_fields` for every file in FILES section | Inline `FIELDNAME (Description)` mentions throughout the document depend on this lookup; skipping leads to vague prose |
 | Never render an exhaustive per-file fields table | Fields appear only where the program touches them, with inline descriptions — readers want what the program uses, not full record layouts |
@@ -595,8 +609,9 @@ Each script writes its output next to the source `.md` with the `.docx` / `.pdf`
 | Every field reference must include its description in parentheses on every mention | Viewers reading any paragraph in isolation must understand the field; relying on a glossary lookup breaks readability |
 | Every subroutine block must show `lines START–END` and `*(line NNN)*` on every internal anchor | Without line numbers, the document cannot be cross-referenced against source for verification or maintenance |
 | Every document must contain at least one ASCII process flow tree in the section required by its template | Visual flow trees are how readers navigate IBM i programs; their absence reduces the doc to prose with no decision-path overview |
-| Output filename must match canonical pattern `{PGM}_{CanonicalDocType}_v{N}.md` from Step 7.5 | CanonicalDocType ∈ {Technical_Specification, Functional_Document, Operations_Guide, Architecture_Review}, N from Step 7.5; any other shape = **ERROR**, do not write |
-| `TodoWrite` must run after Step 1 and before any `ia_*` MCP call | Without an explicit plan, agents skip verification, invent filenames, or drop steps; the todo list is the agent's self-checklist |
+| Output filename must match canonical pattern `{PGM}_{CanonicalDocType}.md` from Step 7.5 | CanonicalDocType ∈ {Technical_Specification, Functional_Document, Operations_Guide, Architecture_Review}, no version suffix; any other shape = **ERROR**, do not write |
+| Run the Step 1.5 existence check before any `ia_*` call; if the canonical doc exists, surface it (date + link) and get confirmation before regenerating | Avoids silently regenerating a doc the user already has and avoids wasting iA calls when they decline |
+| `TodoWrite` must run after Step 1.5 and before any `ia_*` MCP call | Without an explicit plan, agents skip verification, invent filenames, or drop steps; the todo list is the agent's self-checklist |
 
 ---
 
@@ -617,9 +632,9 @@ Each script writes its output next to the source `.md` with the `.docx` / `.pdf`
 | Field name without description | `CUSTNO` written instead of `CUSTNO (Customer Number)` | Inline `(FIELD_TEXT)` from `ia_file_fields` on every occurrence |
 | Subroutine missing line range | Block header says only "SUBROUTINE_NAME" without `lines NNN–NNN` | Pull START/END line numbers from `ia_subroutines` and add to every block |
 | Rendered an exhaustive fields table | Section 3 has 200-row field tables when the program touches 8 fields | Drop the table entirely — fields are inline-only where the program logic references them |
-| Picked a filename without running Step 7.5 | New file lands as `BIO60R_Specification.md` or overwrites an existing `_v1` | Step 7.5 is mandatory; the only legitimate source of the filename string |
-| Counted legacy or subfolder files toward version | New file becomes `_v6` because `BIO60R_Program_Analysis_v5.md` exists | Step 7.5 only counts files matching `{PGM}_{CanonicalDocType}_v{N}.md` in the folder root |
-| Skipped `TodoWrite` kickoff | Agent jumped straight from Step 1 to `ia_program_spec_bundle` | Step 1.5 is mandatory; create the todo list before any `ia_*` call |
+| Picked a filename without running Step 7.5 | New file lands as `BIO60R_Specification.md` or a stray `_v{N}` name | Step 7.5 is mandatory; the only legitimate filename is `{PGM}_{CanonicalDocType}.md` |
+| Regenerated a doc that already exists without asking | Replaced the user's current spec, or re-ran all the iA queries when they'd have declined | Step 1.5 is mandatory — list the folder, surface the existing canonical doc (date + link), get confirmation before any `ia_*` call |
+| Skipped `TodoWrite` kickoff | Agent jumped straight from Step 1.5 to `ia_program_spec_bundle` | Step 1.6 is mandatory; create the todo list before any `ia_*` call |
 | Missing ASCII process flow tree | Generated doc has no visual flow in the section required by its template | One ASCII tree (fenced `text` block, box-drawing chars) per template-required section |
 
 ---
@@ -715,7 +730,8 @@ FORMATTING GUIDELINES
 iA-SPECIFIC RULES (layered on top)
 --------------------------------
 MANDATORY SEQUENCE BEFORE WRITING:
-0. TodoWrite                                     → create todo list covering Step 2 → Step 9 BEFORE any ia_* call
+0a. Existing-doc check (Step 1.5)                → list docs/program-specs/{X}/; if {X}_{DocType}.md exists, surface it (last-modified date + link) and confirm regenerate BEFORE any ia_* call
+0b. TodoWrite                                    → create todo list covering Step 2 → Step 9 BEFORE any ia_* call
 1. ia_program_spec_bundle(program_name=X)        → all 8 inventory sections in one call
 2. ia_program_files(member_name=X)               → file usage + FILE_TEXT descriptions + library
 3. ia_file_fields(file_name=F, library_name=L)   → every field's description, held as SILENT in-memory lookup (do NOT render as a table)
@@ -724,9 +740,10 @@ MANDATORY SEQUENCE BEFORE WRITING:
 
 If the bundle errors, fall back to the seven individual tools.
 
-NEVER read any file under docs/program-specs/. Each new document must be
-generated 100% from iA tool output. Listing the program's subfolder to
-compute the next _v{N+1} suffix is the only permitted interaction.
+NEVER read the contents of any file under docs/program-specs/. Each new document
+must be generated 100% from iA tool output. Listing the program's subfolder
+(filenames + last-modified timestamp) for the Step 1.5 existence check is the
+only permitted interaction.
 
 NON-NEGOTIABLE RULES:
 - Every subroutine from SUBROUTINES must appear in Section 5 with a
@@ -760,13 +777,14 @@ NON-NEGOTIABLE RULES:
 
 OUTPUT FILE NAMING:
 - Before naming, run Step 7.5 — Filename Resolution Gate. Do not invent a filename.
-- The filename Step 7.5 emits is the only legitimate save target:
-  `docs/program-specs/{PROGRAM_NAME}/{PROGRAM_NAME}_{CanonicalDocType}_v{N}.md`
+- The only legitimate save target is the single canonical copy:
+  `docs/program-specs/{PROGRAM_NAME}/{PROGRAM_NAME}_{CanonicalDocType}.md`
   with CanonicalDocType ∈ {Technical_Specification, Functional_Document,
-  Operations_Guide, Architecture_Review}.
-- Never overwrite an existing file. Legacy non-canonical files
-  (`{PGM}_Specification.md`, `{PGM}_Doc.md`, etc.) are left strictly in
-  place and do not count toward `_v{N}`.
+  Operations_Guide, Architecture_Review} — no version suffix.
+- One copy per (program, doc type): overwrite this file in place ONLY after the
+  Step 1.5 regenerate confirmation. Legacy/versioned files
+  (`{PGM}_Specification.md`, `{PGM}_..._v2.md`, etc.) are left strictly in
+  place and are never matched or overwritten.
 ```
 
 ---
