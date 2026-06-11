@@ -141,3 +141,5 @@ Do not attempt to diagnose server-side issues or retry indefinitely.
 | Complex analysis chains | [query-flows.md](references/query-flows.md) |
 | Analysis playbooks | [playbook.md](references/playbook.md) |
 | Program documentation | [program-documentation.md](references/program-documentation.md) |
+| Test case document for a program (QA/UAT scripts) | [test-case-generation.md](references/test-case-generation.md) |
+| Visual flowchart of a program (single-page HTML) | [flowchart.md](references/flowchart.md) |

@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- ✏️ REPLACE [PROGRAM_NAME] -->
+    <title>[PROGRAM_NAME] Flowchart</title>
+    <!-- ⚠️ Use v10.9.0 ONLY — v11.x has SVG layout issues -->
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.0/dist/mermaid.min.js"></script>
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: 'Segoe UI', system-ui, sans-serif; color:#23303a; background:#fff; max-width:1100px; margin:0 auto; padding:28px 24px; line-height:1.5; }
+        h1 { font-size:1.5em; margin:0 0 2px; }
+        .sub { color:#5b6b78; margin:0 0 14px; }
+        .meta { font-size:.85em; color:#5b6b78; border:1px solid #e6eaee; border-radius:8px; padding:8px 12px; margin-bottom:22px; }
+        .meta b { color:#23303a; }
+        .diagram { border:1px solid #e6eaee; border-radius:8px; padding:14px; overflow:auto; text-align:center; }
+        .mermaid { display:block; }
+        .legend { display:flex; flex-wrap:wrap; gap:16px; margin:14px 0 8px; font-size:.82em; color:#445; }
+        .legend span { display:flex; align-items:center; gap:6px; }
+        .sw { width:13px; height:13px; border-radius:3px; display:inline-block; }
+        h2 { font-size:1.05em; margin:24px 0 8px; border-bottom:1px solid #e6eaee; padding-bottom:4px; }
+        p.lead { margin:6px 0 0; }
+        table { width:100%; border-collapse:collapse; font-size:.85em; }
+        th { text-align:left; background:#f4f6f8; padding:6px 9px; }
+        td { padding:5px 9px; border-bottom:1px solid #eef1f3; vertical-align:top; }
+        code { background:#f4f6f8; padding:1px 4px; border-radius:3px; }
+        .note { font-size:.8em; color:#5b6b78; margin-top:22px; border-top:1px solid #e6eaee; padding-top:10px; }
+        @media print {
+            body { padding:0; max-width:100%; }
+            .diagram { border:none; padding:0; }
+            .mermaid svg { max-width:100% !important; height:auto !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+            tr, h2 { page-break-inside:avoid; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- ✏️ SECTION 1 — Heading + one-line description -->
+    <h1>[PROGRAM_NAME]</h1>
+    <p class="sub">[One-line description of what this program does.] <em>One-diagram view, top-to-bottom flow.</em></p>
+
+    <!-- ✏️ SECTION 2 — Meta strip (line 1: bundle COMPLEXITY/LOOKUP; line 2: ia_call_hierarchy CALLERS + bundle CALLEES/PARAMS) -->
+    <div class="meta">
+        <b>[LIBRARY]</b> · source <b>[SOURCE_MEMBER]</b> · <b>[TYPE]</b> · <b>[NNN]</b> lines ([NNN] executable) ·
+        <b>[NN]</b> subroutines · [N PF + N DSPF] · [N] external calls · updated <b>[YYYY-MM-DD]</b><br>
+        Called by <b>[CALLERS or none]</b> · Calls <b>[CALLEES or none]</b> · Entry: <b>[*ENTRY/PI params, or "no parameters — interactive"]</b>
+    </div>
+
+    <!-- ════════════════════════════════════════════════════════════════
+         SECTION 3 — THE DIAGRAM  (ONE flowchart TD, whole program, top→bottom)
+         ✏️ Replace the skeleton below with the real program flow.
+            • ~15–25 nodes; collapse helper subroutines into representative nodes.
+            • NO subgraphs. One START, one END. Line ref (<br/>L..) in every block.
+            • Loop-backs = dotted  -.->|loop|   ;   program exit = thick  ==>|Yes|
+            • Shapes: (["..."]) terminal · ["..."] process · [/"..."/] display
+                      [("...")] db · [["..."]] external CALL · {"..."} decision
+            • External CALL/CALLP to another program: NEVER collapse — give it
+              its own [["CALL PGMX<br/>L.."]] node with class extcall.
+    ════════════════════════════════════════════════════════════════ -->
+    <div class="diagram">
+        <div class="mermaid">
+flowchart TD
+  START(["START"])
+  INIT["[Initialization]<br/>L[x-y]"]
+  MENU[/"[EXFMT main screen]<br/>L[x]"/]
+  EXITQ{"[Exit key pressed?]<br/>L[x]"}
+  ROUTE{"[Which option?]<br/>L[x-y]"}
+  OPT1[/"[Option 1 — screen]<br/>L[x]"/]
+  READ1[("[CHAIN / READ file]<br/>L[x]")]
+  FOUND{"[Found?]<br/>L[x]"}
+  SHOW1[/"[Show / process record]<br/>L[x-y]"/]
+  NF["[Not-found message]<br/>L[x]"]
+  OPT2[/"[Option 2 — screen]<br/>L[x]"/]
+  VAL{"[Valid?]<br/>L[x-y]"}
+  WRITE2[("[WRITE / UPDATE file]<br/>L[x]")]
+  OK["[Success message]<br/>L[x]"]
+  INVALID["[Invalid option message]<br/>L[x]"]
+  ENDP(["END<br/>L[x]"])
+
+  START --> INIT --> MENU --> EXITQ
+  EXITQ -->|No| ROUTE
+  ROUTE -->|invalid| INVALID
+  ROUTE -->|"[opt 1]"| OPT1
+  ROUTE -->|"[opt 2]"| OPT2
+
+  OPT1 --> READ1 --> FOUND
+  FOUND -->|Yes| SHOW1
+  FOUND -->|No| NF
+
+  OPT2 --> VAL
+  VAL -->|invalid| OPT2
+  VAL -->|valid| WRITE2 --> OK
+
+%% If the program CALLs another program, give the call its own node:
+%%   EXTC[["CALL [PGMX] — [purpose]<br/>L[x]"]]
+%%   …wire it into the flow and add:  class EXTC extcall;
+
+  INVALID -.->|loop| MENU
+  SHOW1 -.->|loop| MENU
+  NF -.->|loop| MENU
+  OK -.->|loop| MENU
+  EXITQ ==>|Yes| ENDP
+
+  classDef terminal fill:#2E7D32,stroke:#1B5E20,color:#fff,stroke-width:2px;
+  classDef process  fill:#1565C0,stroke:#0D47A1,color:#fff,stroke-width:2px;
+  classDef display  fill:#0277BD,stroke:#01579B,color:#fff,stroke-width:2px;
+  classDef db       fill:#6A1B9A,stroke:#4A148C,color:#fff,stroke-width:2px;
+  classDef extcall  fill:#00695C,stroke:#004D40,color:#fff,stroke-width:2px;
+  classDef decision fill:#F57F17,stroke:#E65100,color:#fff,stroke-width:2px;
+  classDef error    fill:#C2185B,stroke:#880E4F,color:#fff,stroke-width:2px;
+  class START,ENDP terminal;
+  class INIT,OK process;
+  class MENU,OPT1,SHOW1,OPT2 display;
+  class READ1,WRITE2 db;
+  class EXITQ,ROUTE,FOUND,VAL decision;
+  class INVALID,NF error;
+        </div>
+    </div>
+
+    <!-- SECTION 4 — Legend (colour chips: leave as-is) + F-key row (✏️ list ONLY the keys the program handles) -->
+    <div class="legend">
+        <span><i class="sw" style="background:#2E7D32"></i> Terminal</span>
+        <span><i class="sw" style="background:#1565C0"></i> Process</span>
+        <span><i class="sw" style="background:#0277BD"></i> Display (EXFMT)</span>
+        <span><i class="sw" style="background:#6A1B9A"></i> Database I/O</span>
+        <span><i class="sw" style="background:#00695C"></i> External call</span>
+        <span><i class="sw" style="background:#F57F17"></i> Decision</span>
+        <span><i class="sw" style="background:#C2185B"></i> Error / message</span>
+        <span style="color:#889">· · · dotted = loop back</span>
+    </div>
+    <div class="legend">
+        <span><b>F-keys:</b> [F3 Exit · F4 Lookup window · F12 Back to menu — only keys this program handles]</span>
+    </div>
+
+    <!-- ✏️ SECTION 5 — What it does (2–3 sentences, plain language) -->
+    <h2>What it does</h2>
+    <p class="lead">[Two or three sentences: the program's purpose, its main options/branches, the files it reads and writes, and how it ends. Reference key file/field names in <code>code</code> font.]</p>
+
+    <!-- ✏️ SECTION 6 — Subroutine index (EVERY BEGSR / procedure, even those collapsed in the diagram).
+         "In diagram" = the node that represents it — its own node, or the node it's collapsed under. -->
+    <h2>Subroutines (source index)</h2>
+    <table>
+        <thead><tr><th>Subroutine</th><th>Line</th><th>Area</th><th>In diagram</th><th>Purpose</th></tr></thead>
+        <tbody>
+            <tr><td><code>[NAME]</code></td><td>[NNN]</td><td>[Main/Display/Add/...]</td><td>[node label, or "collapsed under <node label>"]</td><td>[one-line purpose]</td></tr>
+            <!-- one row per subroutine from ia_subroutines (or procedure from ia_procedure_params) -->
+        </tbody>
+    </table>
+
+    <!-- ✏️ SECTION 7 — Files (from bundle FILES section) -->
+    <h2>Files</h2>
+    <table>
+        <thead><tr><th>File</th><th>Type / Access</th><th>Record format(s)</th><th>Role</th></tr></thead>
+        <tbody>
+            <tr><td><code>[FILE]</code></td><td>[Physical file · update/output]</td><td>[RCDFMT]</td><td>[role]</td></tr>
+            <tr><td><code>[DSPF]</code></td><td>[Display file · EXFMT/subfile]</td><td>[formats]</td><td>[role]</td></tr>
+        </tbody>
+    </table>
+
+    <!-- ✏️ SECTION 8 — Footer -->
+    <p class="note">Single rendered diagram — <b>Ctrl+P</b> prints/saves as PDF directly. Generated [YYYY-MM-DD] · [PROGRAM_NAME] · [LIBRARY] · flowchart by iA from programmers.io</p>
+
+    <script>
+        mermaid.initialize({ startOnLoad: true, securityLevel: 'loose', theme: 'base', flowchart: { htmlLabels: true } });
+    </script>
+</body>
+</html>

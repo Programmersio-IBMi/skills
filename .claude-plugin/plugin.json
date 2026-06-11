@@ -1,6 +1,6 @@
 {
   "name": "ia",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "description": "IBM i Impact Analysis — dependency tracing, field impact, call hierarchy, program documentation.",
   "homepage": "https://github.com/programmersio-ibmi/skills",
   "license": "MIT",

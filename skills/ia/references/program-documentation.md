@@ -75,7 +75,7 @@ Wait for one response, then proceed.
 
 **Runs immediately after Step 1 (DocType known) and BEFORE the Todo kickoff and any `ia_*` call.** Its purpose is to keep **a single canonical copy per (program, doc type)** and to avoid regenerating a document the user already has. Doing this *first* means a decline costs zero iA calls.
 
-**1. Coerce the request to exactly one of four canonical DocType names:**
+**1. Coerce the request to exactly one of five canonical DocType names:**
 
 | User wording (examples) | Canonical DocType | Audience template |
 |---|---|---|
@@ -83,6 +83,7 @@ Wait for one response, then proceed.
 | "functional doc", "business doc", "BA doc", "summary" | `Functional_Document` | `template-business.md` |
 | "ops guide", "runbook", "support doc", "operations" | `Operations_Guide` | `template-operations.md` |
 | "architecture review", "audit", "modernization", "design review" | `Architecture_Review` | `template-architect.md` |
+| "test cases", "test scripts", "UAT scripts", "test case document" | `Test_Case_Document` | `template-testcases.md` |
 
 If the request matches none, tell the user which canonical type you chose and why; if it's genuinely ambiguous, ask them to pick one. A multi-type request ("all four", "tech spec and functional doc") runs this whole gate **once per DocType**.
 
@@ -299,6 +300,7 @@ For each cluster, scan source for:
 | Business analysts | [`templates/template-business.md`](templates/template-business.md) | Plain language, business rules |
 | Architects / auditors | [`templates/template-architect.md`](templates/template-architect.md) | Architecture, dependencies, modernization |
 | Support / operations | [`templates/template-operations.md`](templates/template-operations.md) | Runtime, monitoring, troubleshooting |
+| QA / UAT testers | [`templates/template-testcases.md`](templates/template-testcases.md) | Manual execution test scripts — assembly + verification per [`test-case-generation.md`](test-case-generation.md) |
 | Multiple audiences | `template-developer.md` | Most comprehensive |
 
 See [`templates/README.md`](templates/README.md) for comparison matrix.
@@ -459,6 +461,7 @@ PROGRAMNAME (LIBRARY)
 | ✓ Field-format rule | Every field reference in narrative/BRs/sub-blocks carries `(Description)` on every mention | **ERROR** — rewrite occurrences |
 | ✓ Subroutine line ranges | Every subroutine block header shows `lines START–END`; every internal anchor has `*(line NNN)*` | **ERROR** — add line numbers |
 | ✓ Source isolation | No file under `docs/program-specs/` was read during generation (only directory listed for versioning) | **ERROR** — regenerate from iA tools only |
+| ✓ DocType = Test_Case_Document | Run both gates in [`test-case-generation.md`](test-case-generation.md) §5: `python scripts/validate_testcases.py <file>` exits 0, then the TC content-check table | **ERROR** — fix every finding before delivery |
 
 Fix all **ERRORs** before delivery. Present **WARNINGs** with notes in the quality metrics footer.
 
@@ -484,7 +487,7 @@ The canonical **single-copy** filename is:
 docs/program-specs/{PROGRAM_NAME}/{PROGRAM_NAME}_{CanonicalDocType}.md
 ```
 
-where `{CanonicalDocType}` was already coerced in **Step 1.5** (one of `Technical_Specification`, `Functional_Document`, `Operations_Guide`, `Architecture_Review`). There is **no version suffix** — each (program, doc type) pair has exactly one file.
+where `{CanonicalDocType}` was already coerced in **Step 1.5** (one of `Technical_Specification`, `Functional_Document`, `Operations_Guide`, `Architecture_Review`, `Test_Case_Document`). There is **no version suffix** — each (program, doc type) pair has exactly one file.
 
 ### Algorithm
 
@@ -541,7 +544,7 @@ Files like `BIO60R_Specification.md`, `IAMENUR_Doc.md`, `{PGM}_Technical_Specifi
 docs/program-specs/{PROGRAM_NAME}/{PROGRAM_NAME}_{CanonicalDocType}.md
 ```
 
-The four canonical DocType names are coerced in **Step 1.5**; **Step 7.5 — Filename Resolution Gate** confirms the single-copy target path. Step 8 does not recompute either; it only consumes the filename string Step 7.5 produced.
+The five canonical DocType names are coerced in **Step 1.5**; **Step 7.5 — Filename Resolution Gate** confirms the single-copy target path. Step 8 does not recompute either; it only consumes the filename string Step 7.5 produced.
 
 **Save rules:**
 
@@ -609,7 +612,7 @@ Each script writes its output next to the source `.md` with the `.docx` / `.pdf`
 | Every field reference must include its description in parentheses on every mention | Viewers reading any paragraph in isolation must understand the field; relying on a glossary lookup breaks readability |
 | Every subroutine block must show `lines START–END` and `*(line NNN)*` on every internal anchor | Without line numbers, the document cannot be cross-referenced against source for verification or maintenance |
 | Every document must contain at least one ASCII process flow tree in the section required by its template | Visual flow trees are how readers navigate IBM i programs; their absence reduces the doc to prose with no decision-path overview |
-| Output filename must match canonical pattern `{PGM}_{CanonicalDocType}.md` from Step 7.5 | CanonicalDocType ∈ {Technical_Specification, Functional_Document, Operations_Guide, Architecture_Review}, no version suffix; any other shape = **ERROR**, do not write |
+| Output filename must match canonical pattern `{PGM}_{CanonicalDocType}.md` from Step 7.5 | CanonicalDocType ∈ {Technical_Specification, Functional_Document, Operations_Guide, Architecture_Review, Test_Case_Document}, no version suffix; any other shape = **ERROR**, do not write |
 | Run the Step 1.5 existence check before any `ia_*` call; if the canonical doc exists, surface it (date + link) and get confirmation before regenerating | Avoids silently regenerating a doc the user already has and avoids wasting iA calls when they decline |
 | `TodoWrite` must run after Step 1.5 and before any `ia_*` MCP call | Without an explicit plan, agents skip verification, invent filenames, or drop steps; the todo list is the agent's self-checklist |
 
@@ -780,7 +783,7 @@ OUTPUT FILE NAMING:
 - The only legitimate save target is the single canonical copy:
   `docs/program-specs/{PROGRAM_NAME}/{PROGRAM_NAME}_{CanonicalDocType}.md`
   with CanonicalDocType ∈ {Technical_Specification, Functional_Document,
-  Operations_Guide, Architecture_Review} — no version suffix.
+  Operations_Guide, Architecture_Review, Test_Case_Document} — no version suffix.
 - One copy per (program, doc type): overwrite this file in place ONLY after the
   Step 1.5 regenerate confirmation. Legacy/versioned files
   (`{PGM}_Specification.md`, `{PGM}_..._v2.md`, etc.) are left strictly in

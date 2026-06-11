@@ -5,6 +5,18 @@ All notable changes to this project are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] — 2026-06-11
+
+### Added
+
+- **Visual flowchart generation** (`references/flowchart.md`): produce a single-page HTML flowchart of a program — caller context, subroutine/procedure flow, and external-call nodes — from `references/templates/flowchart-template.html`, gated by the `scripts/validate_flowchart.py` lint check.
+- **Test case document generation** (`references/test-case-generation.md`): a fifth document type (QA/UAT test scripts) alongside the four audience templates, built from `references/templates/template-testcases.md` and gated by the `scripts/validate_testcases.py` lint check.
+
+### Changed
+
+- Richer Word/PDF export from the markdown converter scripts: branded cover page, styled tables/headings, and broader markdown coverage in both `convert_md_to_docx.py` and `convert_md_to_pdf.py`.
+- `SKILL.md` references table, templates README, and the program-documentation workflow refreshed to route to the new flowchart and test-case capabilities.
+
 ## [1.0.2] — 2026-06-02
 
 ### Changed
