@@ -12,6 +12,7 @@ This directory contains specialized documentation templates for different audien
 | [`template-business.md`](template-business.md) | Business Analysts, Non-Technical | Business rules, data, process flow | 7 sections (no error handling details) | Business-focused documentation |
 | [`template-architect.md`](template-architect.md) | Architects, Technical Leadership | Architecture, dependencies, complexity | 10 sections + Mermaid diagram + architecture quality | Architecture reviews, modernization planning |
 | [`template-operations.md`](template-operations.md) | Operations, Support Team | Runtime, monitoring, troubleshooting | 10 sections + operational readiness | Operations runbooks, support guides |
+| [`template-testcases.md`](template-testcases.md) | QA / UAT Testers | Manual execution test scripts, traceability | 6 sections + traceability matrix + sign-off | Test case documents, UAT preparation |
 
 ---
 
@@ -24,6 +25,7 @@ This directory contains specialized documentation templates for different audien
 | "Business analysts (non-technical)" | `template-business.md` |
 | "Architects / auditors" | `template-architect.md` |
 | "Support / operations team" | `template-operations.md` |
+| "Test cases / test scripts / UAT scripts" | `template-testcases.md` |
 | Multiple audiences | `template-developer.md` (most comprehensive) |
 
 ---
@@ -32,22 +34,23 @@ This directory contains specialized documentation templates for different audien
 
 ### Section Coverage Matrix
 
-| Section | Developer | Business | Architect | Operations |
-|---------|-----------|----------|-----------|------------|
-| Program Purpose | ✅ | ✅ | ✅ | ✅ |
-| Parameters | ✅ | ❌ | ❌ | ❌ |
-| File Usage | ✅ | ✅ (simplified) | ✅ (data architecture) | ✅ (operational view) |
-| Business Rules | ✅ | ✅ | ❌ | ❌ |
-| Call Hierarchy | ✅ | ✅ (simplified) | ✅ (dependency analysis) | ✅ (dependencies) |
-| Mermaid Diagram | ✅ | ❌ | ✅ | ❌ |
-| Processing Flow | ✅ | ✅ | ❌ | ❌ |
-| Error Handling | ✅ | ✅ (user-facing) | ❌ | ✅ (troubleshooting) |
-| Statistics | ✅ | ✅ (simplified) | ✅ (complexity metrics) | ✅ (runtime info) |
-| Quality Metrics | ✅ | ✅ | ✅ | ✅ |
-| Architecture Patterns | ❌ | ❌ | ✅ | ❌ |
-| Modernization | ❌ | ❌ | ✅ | ❌ |
-| Monitoring | ❌ | ❌ | ❌ | ✅ |
-| Troubleshooting | ❌ | ❌ | ❌ | ✅ |
+| Section | Developer | Business | Architect | Operations | Test Cases |
+|---------|-----------|----------|-----------|------------|------------|
+| Program Purpose | ✅ | ✅ | ✅ | ✅ | ✅ (introduction) |
+| Parameters | ✅ | ❌ | ❌ | ❌ | ✅ (parameter tests) |
+| File Usage | ✅ | ✅ (simplified) | ✅ (data architecture) | ✅ (operational view) | ✅ (environment + data sets) |
+| Business Rules | ✅ | ✅ | ❌ | ❌ | ✅ (BR ↔ TC traceability) |
+| Call Hierarchy | ✅ | ✅ (simplified) | ✅ (dependency analysis) | ✅ (dependencies) | ❌ |
+| Mermaid Diagram | ✅ | ❌ | ✅ | ❌ | ❌ |
+| Processing Flow | ✅ | ✅ | ❌ | ❌ | ❌ |
+| Error Handling | ✅ | ✅ (user-facing) | ❌ | ✅ (troubleshooting) | ✅ (negative cases) |
+| Statistics | ✅ | ✅ (simplified) | ✅ (complexity metrics) | ✅ (runtime info) | ❌ |
+| Quality Metrics | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Architecture Patterns | ❌ | ❌ | ✅ | ❌ | ❌ |
+| Modernization | ❌ | ❌ | ✅ | ❌ | ❌ |
+| Monitoring | ❌ | ❌ | ❌ | ✅ | ❌ |
+| Troubleshooting | ❌ | ❌ | ❌ | ✅ | ❌ |
+| Execution Tracking / Sign-off | ❌ | ❌ | ❌ | ❌ | ✅ |
 
 ---
 
@@ -116,6 +119,22 @@ This directory contains specialized documentation templates for different audien
 - Operational readiness checklist
 
 **Verification Rules:** 6 of 7 rules enforced (business rule coverage relaxed)
+
+---
+
+### Test Cases Template
+**Best for:** Test case documents, UAT preparation, QA handoff
+
+**Key Features:**
+- Manual execution scripts for QA/UAT testers (no RPG jargon in steps)
+- Block-per-test-case layout (no wide grids — Word-export friendly)
+- Test cases derived from source evidence: BRs, F-keys, file I/O, boundaries, parameters
+- Synthetic test data sets built from field definitions
+- Two-way BR ↔ TC traceability matrix with coverage percentage
+- Blank execution strips + sign-off block for the tester
+- Lint gate: `scripts/validate_testcases.py` must exit 0 before delivery
+
+**Verification Rules:** see [test-case-generation.md §5](../test-case-generation.md) — coverage floors (every BR / handled F-key / written file has a test case) + expected-result source evidence
 
 ---
 

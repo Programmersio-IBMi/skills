@@ -170,6 +170,9 @@ def strip_markdown_formatting(text: str) -> str:
 
 _XML_BAD = re.compile(r'[\x00-\x08\x0B\x0C\x0E-\x1F]')
 
+# Markdown backslash-escapable punctuation (\< \> \| \* etc.)
+MD_ESCAPE_RE = re.compile(r'\\([\\`*_{}\[\]()#+\-.!|<>])')
+
 
 def _xml_clean(s: str) -> str:
     return _XML_BAD.sub('', s) if s else s
@@ -193,11 +196,17 @@ def parse_inline_formatting(para, text: str):
     bold_spans: List[str] = []
     italic_spans: List[str] = []
     link_spans: List[Tuple[str, str]] = []
+    esc_spans: List[str] = []
 
     def save_code(m):
         idx = len(code_spans)
         code_spans.append(m.group(1))
         return f'\x00C{idx}\x00'
+
+    def save_esc(m):
+        idx = len(esc_spans)
+        esc_spans.append(m.group(1))
+        return f'\x00E{idx}\x00'
 
     def save_link(m):
         idx = len(link_spans)
@@ -222,6 +231,9 @@ def parse_inline_formatting(para, text: str):
     # Code spans (handle multi-tick fences first then single-tick)
     text = re.sub(r'``([^`]+)``', save_code, text)
     text = re.sub(r'`([^`\n]+)`', save_code, text)
+    # Markdown backslash escapes -> literal character (protected from
+    # the formatting regexes below, e.g. \< \> \| \*)
+    text = MD_ESCAPE_RE.sub(save_esc, text)
     # Links
     text = re.sub(r'\[([^\]]+)\]\(([^)]+)\)', save_link, text)
     # Bold+italic
@@ -235,7 +247,7 @@ def parse_inline_formatting(para, text: str):
 
     # Decode placeholders — recursively, since bold/italic spans may contain
     # nested code-span or link placeholders that were saved earlier.
-    placeholder_re = re.compile(r'(\x00[CLXBI]\d+\x00)')
+    placeholder_re = re.compile(r'(\x00[CLXBIE]\d+\x00)')
 
     def render(segment: str, bold: bool = False, italic: bool = False):
         if not segment:
@@ -243,7 +255,7 @@ def parse_inline_formatting(para, text: str):
         for part in placeholder_re.split(segment):
             if not part:
                 continue
-            m = re.match(r'\x00([CLXBI])(\d+)\x00$', part)
+            m = re.match(r'\x00([CLXBIE])(\d+)\x00$', part)
             if not m:
                 run = para.add_run(_xml_clean(part))
                 if bold:
@@ -270,6 +282,12 @@ def parse_inline_formatting(para, text: str):
                 render(bold_spans[idx_s], bold=True, italic=italic)
             elif kind == 'I':
                 render(italic_spans[idx_s], bold=bold, italic=True)
+            elif kind == 'E':
+                run = para.add_run(_xml_clean(esc_spans[idx_s]))
+                if bold:
+                    run.bold = True
+                if italic:
+                    run.italic = True
 
     render(text)
 
@@ -277,17 +295,27 @@ def parse_inline_formatting(para, text: str):
 # ── Tables ─────────────────────────────────────────────────────────────
 
 
+def _split_md_row(line: str) -> List[str]:
+    """Split a table row honoring escaped pipes and optional trailing pipe."""
+    line = line.strip().replace('\\|', '\x00PIPE\x00')
+    if line.startswith('|'):
+        line = line[1:]
+    if line.endswith('|'):
+        line = line[:-1]
+    return [c.replace('\x00PIPE\x00', '\\|').strip() for c in line.split('|')]
+
+
 def parse_table(lines: List[str], start_idx: int) -> Tuple[List[List[str]], int]:
     rows = []
     idx = start_idx
     while idx < len(lines):
         line = lines[idx].rstrip()
-        if not line.startswith('|'):
+        if not line.lstrip().startswith('|'):
             break
         if re.match(r'^[\|\-\:\s]+$', line):
             idx += 1
             continue
-        cells = [c.strip() for c in line.split('|')[1:-1]]
+        cells = _split_md_row(line)
         if cells:
             rows.append(cells)
         idx += 1
@@ -544,12 +572,25 @@ def add_list_items(doc, items: List[Dict]):
         text = item['text']
         level = min(max(item['level'], 0), 3)
 
+        # Returning to a shallower level restarts any deeper ordered runs
+        for lv in list(counters.keys()):
+            if lv > level:
+                counters.pop(lv)
+
         p = doc.add_paragraph()
         p.paragraph_format.space_before = Pt(0)
         p.paragraph_format.space_after = Pt(2)
         p.paragraph_format.left_indent = Cm(0.6 + 0.5 * level)
         # Hanging indent so wrapped lines align under the text, not the marker
         p.paragraph_format.first_line_indent = Cm(-0.55)
+
+        # Task-list checkboxes: - [x] done / - [ ] open
+        checkbox = None
+        if not item['ordered']:
+            m_cb = re.match(r'^\[( |x|X)\]\s+(.*)$', text)
+            if m_cb:
+                checkbox = '☑' if m_cb.group(1).lower() == 'x' else '☐'
+                text = m_cb.group(2)
 
         if item['ordered']:
             # Restart counter for this level the first time we hit it.
@@ -565,10 +606,7 @@ def add_list_items(doc, items: List[Dict]):
             counters[level] += 1
             marker = f'{n}.'
         else:
-            # Bullets reset any deeper-level ordered counters
-            counters.pop(level + 1, None)
-            counters.pop(level + 2, None)
-            marker = bullets_by_level[min(level, len(bullets_by_level) - 1)]
+            marker = checkbox or bullets_by_level[min(level, len(bullets_by_level) - 1)]
 
         marker_run = p.add_run(marker + '\t')
         marker_run.font.name = 'Calibri'
@@ -645,6 +683,254 @@ def is_table_start(lines: List[str], i: int) -> bool:
     return False
 
 
+# ── Metadata, cover page, TOC, header/footer ──────────────────────────
+
+
+def extract_title(md_content: str) -> str:
+    for line in md_content.split('\n'):
+        line = line.strip()
+        if line.startswith('# '):
+            return line[2:].strip()
+    return 'Technical Document'
+
+
+def extract_metadata(md_content: str) -> Tuple[Dict[str, str], int]:
+    """Parse the leading '**Key:** value' header block (after the H1 title).
+    Handles several pairs on one line separated by '|'.
+    Returns (meta, index_of_first_body_line)."""
+    meta: Dict[str, str] = {}
+    lines = md_content.split('\n')
+    in_header = False
+    skip_count = 0
+    for i, raw in enumerate(lines):
+        line = raw.strip()
+        if not line:
+            if in_header and meta:
+                skip_count = i + 1
+                break
+            continue
+        if line.startswith('#'):
+            if in_header:
+                skip_count = i
+                break
+            continue  # H1 title precedes the metadata block
+        if re.match(r'\*\*[^*]+?:?\*\*:?\s*\S', line):
+            in_header = True
+            for seg in re.split(r'\s*\|\s*(?=\*\*)', line):
+                m = re.match(r'\*\*([^*]+?):?\*\*:?\s*(.+)$', seg.strip())
+                if m:
+                    meta[m.group(1).strip()] = m.group(2).strip()
+            skip_count = i + 1
+        elif in_header and line == '---':
+            skip_count = i + 1
+            break
+        elif in_header:
+            skip_count = i
+            break
+        else:
+            break
+    return meta, skip_count
+
+
+_SUBTITLE_KEYS = ('Member type', 'Type', 'Program', 'Source file', 'File',
+                  'Library version documented', 'Library')
+
+
+def add_cover_page(doc: Document, meta: Dict[str, str], title: str):
+    """Styled cover: eyebrow, large title, accent rule, metadata block."""
+    import datetime as _dt
+
+    eyebrow, main = 'TECHNICAL DOCUMENT', title
+    for dash in ('—', ' -- ', ' - '):
+        if dash in title:
+            left, right = title.split(dash, 1)
+            if left.strip() and right.strip():
+                eyebrow, main = left.strip().upper(), right.strip()
+            break
+
+    spacer = doc.add_paragraph()
+    spacer.paragraph_format.space_before = Pt(110)
+    spacer.paragraph_format.space_after = Pt(0)
+
+    p_eye = doc.add_paragraph()
+    p_eye.paragraph_format.space_after = Pt(6)
+    r = p_eye.add_run(eyebrow)
+    r.font.size = Pt(12)
+    r.font.bold = True
+    r.font.color.rgb = COLOR_ACCENT
+
+    p_title = doc.add_paragraph()
+    p_title.paragraph_format.space_after = Pt(10)
+    r = p_title.add_run(main)
+    r.font.size = Pt(34) if len(main) <= 22 else Pt(26)
+    r.font.bold = True
+    r.font.color.rgb = COLOR_PRIMARY
+
+    parts = []
+    for key in ('Member type', 'Type', 'Program'):
+        if key in meta:
+            parts.append(meta[key])
+            break
+    for key in ('Source file', 'File'):
+        if key in meta:
+            parts.append(f"Source: {meta[key]}")
+            break
+    for key in ('Library version documented', 'Library'):
+        if key in meta:
+            parts.append(f"Library: {meta[key]}")
+            break
+    if parts:
+        p_sub = doc.add_paragraph()
+        p_sub.paragraph_format.space_after = Pt(4)
+        r = p_sub.add_run('  |  '.join(parts))
+        r.font.size = Pt(12)
+        r.font.color.rgb = COLOR_SECONDARY
+
+    rule = doc.add_paragraph()
+    rule.paragraph_format.space_after = Pt(24)
+    pPr = rule._p.get_or_add_pPr()
+    pBdr = OxmlElement('w:pBdr')
+    bottom = OxmlElement('w:bottom')
+    bottom.set(qn('w:val'), 'single')
+    bottom.set(qn('w:sz'), '12')
+    bottom.set(qn('w:space'), '1')
+    bottom.set(qn('w:color'), '3182CE')
+    pBdr.append(bottom)
+    pPr.append(pBdr)
+
+    shown_date = False
+    for key, value in meta.items():
+        if key in _SUBTITLE_KEYS:
+            continue
+        if key == 'Date':
+            shown_date = True
+        p = doc.add_paragraph()
+        p.paragraph_format.space_after = Pt(3)
+        r = p.add_run(f'{key}:  ')
+        r.font.size = Pt(10.5)
+        r.font.bold = True
+        r.font.color.rgb = COLOR_SECONDARY
+        r = p.add_run(value)
+        r.font.size = Pt(10.5)
+        r.font.color.rgb = RGBColor(0x2d, 0x37, 0x48)
+    if not shown_date:
+        p = doc.add_paragraph()
+        r = p.add_run('Date:  ')
+        r.font.size = Pt(10.5)
+        r.font.bold = True
+        r.font.color.rgb = COLOR_SECONDARY
+        r = p.add_run(_dt.date.today().isoformat())
+        r.font.size = Pt(10.5)
+
+    doc.add_page_break()
+
+
+def _add_field(para, instr: str, font_size=Pt(8), color=COLOR_MUTED):
+    """Insert a Word field (e.g. PAGE, NUMPAGES) as a run."""
+    run = para.add_run()
+    r = run._r
+    f1 = OxmlElement('w:fldChar')
+    f1.set(qn('w:fldCharType'), 'begin')
+    r.append(f1)
+    it = OxmlElement('w:instrText')
+    it.set(qn('xml:space'), 'preserve')
+    it.text = instr
+    r.append(it)
+    f2 = OxmlElement('w:fldChar')
+    f2.set(qn('w:fldCharType'), 'end')
+    r.append(f2)
+    run.font.size = font_size
+    run.font.color.rgb = color
+    return run
+
+
+def add_toc_page(doc: Document):
+    """'Contents' heading + a native Word TOC field (levels 1-3)."""
+    h = doc.add_paragraph()
+    h.paragraph_format.space_after = Pt(14)
+    r = h.add_run('Contents')
+    r.font.size = Pt(20)
+    r.font.bold = True
+    r.font.color.rgb = COLOR_PRIMARY
+
+    p = doc.add_paragraph()
+    run = p.add_run()
+    r_el = run._r
+    f1 = OxmlElement('w:fldChar')
+    f1.set(qn('w:fldCharType'), 'begin')
+    r_el.append(f1)
+    it = OxmlElement('w:instrText')
+    it.set(qn('xml:space'), 'preserve')
+    it.text = r'TOC \o "1-3" \h \z \u'
+    r_el.append(it)
+    f2 = OxmlElement('w:fldChar')
+    f2.set(qn('w:fldCharType'), 'separate')
+    r_el.append(f2)
+    t = OxmlElement('w:t')
+    t.text = 'Table of contents will populate when fields update (Word asks on open).'
+    r_el.append(t)
+    f3 = OxmlElement('w:fldChar')
+    f3.set(qn('w:fldCharType'), 'end')
+    r_el.append(f3)
+
+    doc.add_page_break()
+
+
+def enable_update_fields(doc: Document):
+    """Ask Word to refresh fields (the TOC) when the document opens."""
+    element = doc.settings.element
+    uf = element.find(qn('w:updateFields'))
+    if uf is None:
+        uf = OxmlElement('w:updateFields')
+        element.append(uf)
+    uf.set(qn('w:val'), 'true')
+
+
+def setup_header_footer(doc: Document, title: str, meta: Dict[str, str]):
+    """Running header (title + accent rule) and footer (brand | Page X of Y).
+    The cover page stays clean via different-first-page."""
+    from docx.enum.text import WD_TAB_ALIGNMENT
+
+    section = doc.sections[0]
+    section.different_first_page_header_footer = True
+
+    header = section.header
+    hp = header.paragraphs[0]
+    hp.text = ''
+    r = hp.add_run(title)
+    r.font.size = Pt(8)
+    r.font.bold = True
+    r.font.color.rgb = COLOR_MUTED
+    pPr = hp._p.get_or_add_pPr()
+    pBdr = OxmlElement('w:pBdr')
+    bottom = OxmlElement('w:bottom')
+    bottom.set(qn('w:val'), 'single')
+    bottom.set(qn('w:sz'), '8')
+    bottom.set(qn('w:space'), '4')
+    bottom.set(qn('w:color'), '3182CE')
+    pBdr.append(bottom)
+    pPr.append(pBdr)
+
+    footer = section.footer
+    fp = footer.paragraphs[0]
+    fp.text = ''
+    usable = section.page_width - section.left_margin - section.right_margin
+    fp.paragraph_format.tab_stops.add_tab_stop(Emu(usable), WD_TAB_ALIGNMENT.RIGHT)
+    date_str = meta.get('Date', '')
+    left_text = 'iA by programmers.io' + (f'  |  {date_str}' if date_str else '')
+    r = fp.add_run(left_text + '\t')
+    r.font.size = Pt(8)
+    r.font.color.rgb = COLOR_MUTED
+    r = fp.add_run('Page ')
+    r.font.size = Pt(8)
+    r.font.color.rgb = COLOR_MUTED
+    _add_field(fp, 'PAGE')
+    r = fp.add_run(' of ')
+    r.font.size = Pt(8)
+    r.font.color.rgb = COLOR_MUTED
+    _add_field(fp, 'NUMPAGES')
+
+
 # ── Main converter ────────────────────────────────────────────────────
 
 
@@ -664,14 +950,23 @@ def convert_md_to_docx(md_file: str, docx_file: Optional[str] = None) -> str:
     if docx_file is None:
         docx_file = os.path.splitext(md_file)[0] + '.docx'
 
+    title = extract_title(raw)
+    meta, meta_skip = extract_metadata(raw)
+
     doc = Document()
     core_props = doc.core_properties
-    core_props.title = os.path.splitext(os.path.basename(md_file))[0]
-    core_props.author = "iA by programmers.io"
+    core_props.title = title
+    core_props.author = meta.get('Author', 'iA by programmers.io')
+    core_props.subject = meta.get('Audience', 'Technical documentation')
 
     configure_document_defaults(doc)
+    setup_header_footer(doc, title, meta)
+    add_cover_page(doc, meta, title)
+    add_toc_page(doc)
+    enable_update_fields(doc)
 
-    i = 0
+    section_count = 0
+    i = meta_skip
     while i < len(lines):
         line = lines[i]
         stripped = line.strip()
@@ -686,14 +981,19 @@ def convert_md_to_docx(md_file: str, docx_file: Optional[str] = None) -> str:
             m = re.match(r'^(#{1,6})\s+(.*)$', stripped)
             if m:
                 level = len(m.group(1))
-                title = strip_markdown_formatting(m.group(2)).strip()
+                heading_text = strip_markdown_formatting(m.group(2)).strip()
                 # Trim trailing # tokens (ATX style)
-                title = re.sub(r'\s+#+\s*$', '', title)
+                heading_text = re.sub(r'\s+#+\s*$', '', heading_text)
                 p = doc.add_heading(level=level)
                 # Inline formatting allowed inside heading text
-                parse_inline_formatting(p, title)
+                parse_inline_formatting(p, heading_text)
                 if level == 1:
                     p.alignment = WD_ALIGN_PARAGRAPH.LEFT
+                if level == 2:
+                    # Each major section starts on a fresh page (after the first)
+                    section_count += 1
+                    if section_count >= 2:
+                        p.paragraph_format.page_break_before = True
                 i += 1
                 continue
 
