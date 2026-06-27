@@ -143,3 +143,4 @@ Do not attempt to diagnose server-side issues or retry indefinitely.
 | Program documentation | [program-documentation.md](references/program-documentation.md) |
 | Test case document for a program (QA/UAT scripts) | [test-case-generation.md](references/test-case-generation.md) |
 | Visual flowchart of a program (single-page HTML) | [flowchart.md](references/flowchart.md) |
+| 3D app map of a library or application area (interactive HTML) | [app-map.md](references/app-map.md) |
