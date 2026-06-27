@@ -12,6 +12,7 @@ This index guides progressive loading of skill references. Load only what you ne
 | **Complex analysis** (field impact, call chains) | + [query-flows.md](query-flows.md) | Optimal tool sequences |
 | **Troubleshooting / edge cases** | + [playbook.md](playbook.md) | Analysis playbooks |
 | **Program documentation** | + [program-documentation.md](program-documentation.md) | 8-step workflow |
+| **App map** ("app map of library/area", "3D map") | + [app-map.md](app-map.md) | JSON contract + build script |
 
 ## Reference Files
 
@@ -22,6 +23,7 @@ This index guides progressive loading of skill references. Load only what you ne
 | [query-flows.md](query-flows.md) | Optimal tool chains | Complex multi-step analysis |
 | [playbook.md](playbook.md) | Playbooks + chaining rules | Edge cases, troubleshooting |
 | [program-documentation.md](program-documentation.md) | Spec generation workflow | "Document program X" |
+| [app-map.md](app-map.md) | 3D application map workflow | "App map of library/area X" |
 | [templates/](templates/) | 4 audience-specific templates | Spec generation |
 
 ## Quick Decision

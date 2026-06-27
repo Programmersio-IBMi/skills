@@ -5,6 +5,16 @@ All notable changes to this project are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] — 2026-06-27
+
+### Added
+
+- **3D application map generation** (`references/app-map.md`): produce an interactive 3D map of a whole library or application area — menus, programs, data files, display/printer files, and external calls as nodes, with read/write/call/submit relationships as links. Authored as a single JSON data file (the source of truth) and built into a self-contained HTML viewer by `scripts/build_app_map.py` from `templates/app-map-template.html`. Ships with a node-budget recipe, a closed node/link vocabulary the builder validates, and a guided-tour walkthrough.
+
+### Changed
+
+- `SKILL.md` references table and `references/index.md` routing updated to surface the new app-map capability ("app map of library/area X", "3D map").
+
 ## [1.1.0] — 2026-06-11
 
 ### Added
