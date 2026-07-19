@@ -275,7 +275,16 @@ def parse_inline_formatting(para, text: str):
                     run.italic = True
             elif kind == 'L':
                 ltext, lurl = link_spans[idx_s]
-                add_hyperlink(para, lurl, ltext)
+                # Link text may contain nested placeholders (e.g. a code
+                # span saved before links) — resolve them to plain text.
+                def _resolve(pm):
+                    k, i2 = pm.group(1), int(pm.group(2))
+                    return {'C': code_spans, 'X': bi_spans, 'B': bold_spans,
+                            'I': italic_spans, 'E': esc_spans,
+                            'L': [t for t, _ in link_spans]}[k][i2]
+                while placeholder_re.search(ltext):
+                    ltext = re.sub(r'\x00([CLXBIE])(\d+)\x00', _resolve, ltext)
+                add_hyperlink(para, lurl, _xml_clean(ltext))
             elif kind == 'X':
                 render(bi_spans[idx_s], bold=True, italic=True)
             elif kind == 'B':
@@ -934,7 +943,8 @@ def setup_header_footer(doc: Document, title: str, meta: Dict[str, str]):
 # ── Main converter ────────────────────────────────────────────────────
 
 
-def convert_md_to_docx(md_file: str, docx_file: Optional[str] = None) -> str:
+def convert_md_to_docx(md_file: str, docx_file: Optional[str] = None,
+                       cover: bool = True) -> str:
     try:
         with open(md_file, 'r', encoding='utf-8') as f:
             raw = f.read()
@@ -961,11 +971,16 @@ def convert_md_to_docx(md_file: str, docx_file: Optional[str] = None) -> str:
 
     configure_document_defaults(doc)
     setup_header_footer(doc, title, meta)
-    add_cover_page(doc, meta, title)
-    add_toc_page(doc)
+    if cover:
+        add_cover_page(doc, meta, title)
+        add_toc_page(doc)
+    else:
+        p = doc.add_heading(level=1)
+        parse_inline_formatting(p, title)
+        p.alignment = WD_ALIGN_PARAGRAPH.LEFT
+        p.paragraph_format.keep_with_next = True
     enable_update_fields(doc)
 
-    section_count = 0
     i = meta_skip
     while i < len(lines):
         line = lines[i]
@@ -989,11 +1004,10 @@ def convert_md_to_docx(md_file: str, docx_file: Optional[str] = None) -> str:
                 parse_inline_formatting(p, heading_text)
                 if level == 1:
                     p.alignment = WD_ALIGN_PARAGRAPH.LEFT
-                if level == 2:
-                    # Each major section starts on a fresh page (after the first)
-                    section_count += 1
-                    if section_count >= 2:
-                        p.paragraph_format.page_break_before = True
+                # Never force a page break per section — let content flow.
+                # Keep the heading glued to what follows so it can't strand
+                # alone at the bottom of a page.
+                p.paragraph_format.keep_with_next = True
                 i += 1
                 continue
 
@@ -1107,13 +1121,15 @@ Examples:
     )
     parser.add_argument('input', help='Input Markdown file')
     parser.add_argument('output', nargs='?', help='Output DOCX file (default: same name with .docx)')
+    parser.add_argument('--no-cover', action='store_true',
+                        help='Skip the cover page and table of contents (for compact 1-2 page documents)')
     args = parser.parse_args()
 
     if not os.path.exists(args.input):
         print(f"Error: Input file '{args.input}' not found.")
         sys.exit(1)
 
-    output_file = convert_md_to_docx(args.input, args.output)
+    output_file = convert_md_to_docx(args.input, args.output, cover=not args.no_cover)
     try:
         print(f"[OK] Created: {output_file}")
     except UnicodeEncodeError:

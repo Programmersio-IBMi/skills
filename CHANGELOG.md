@@ -5,6 +5,21 @@ All notable changes to this project are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.1] — 2026-07-19
+
+### Added
+
+- **Source-freshness gates** in the program-documentation workflow (`references/program-documentation.md`):
+  - Quality Report footer now carries a source fingerprint (member changed date/time, total lines, repo schema).
+  - Export staleness gate: before converting a spec not generated in the current session, compare its fingerprint against a live `ia_member_lookup` and offer regeneration if the source has changed.
+  - Verification rule for absolute access-method claims ("SQL-only", "no native I/O") — such claims now require in-session proof from F-specs plus a native-opcode source search.
+- `--no-cover` flag on `scripts/convert_md_to_docx.py` to skip the cover page and TOC for compact 1–2 page documents.
+
+### Changed
+
+- Both converters (`convert_md_to_docx.py`, `convert_md_to_pdf.py`) no longer force a page break before every major section; headings are kept with following content so they never strand at the bottom of a page.
+- DOCX converter resolves nested inline formatting (e.g. code spans) inside link text instead of emitting raw placeholders.
+
 ## [1.2.0] — 2026-06-27
 
 ### Added
