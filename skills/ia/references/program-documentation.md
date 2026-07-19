@@ -462,6 +462,8 @@ PROGRAMNAME (LIBRARY)
 | ✓ Subroutine line ranges | Every subroutine block header shows `lines START–END`; every internal anchor has `*(line NNN)*` | **ERROR** — add line numbers |
 | ✓ Source isolation | No file under `docs/program-specs/` was read during generation (only directory listed for versioning) | **ERROR** — regenerate from iA tools only |
 | ✓ DocType = Test_Case_Document | Run both gates in [`test-case-generation.md`](test-case-generation.md) §5: `python scripts/validate_testcases.py <file>` exits 0, then the TC content-check table | **ERROR** — fix every finding before delivery |
+| ✓ Absolute access-method claims | Any "all / only / no / never" claim about data access (e.g. "SQL-only — no CHAIN/READ") is backed by in-session proof: `ia_rpg_source(source_spec='F')` shows only WORKSTN files **and** `ia_rpg_source_search` for native opcodes (`CHAIN`, `READ`, `WRITE `, `UPDATE `, `SETLL`) over the member returns no database-file hits | **ERROR** — drop the absolute; describe access as mixed, per file |
+| ✓ Source fingerprint in footer | Quality Report Freshness row carries the source fingerprint: member changed date/time + total lines + repo schema (all already in hand from Step 2 LOOKUP/COMPLEXITY) | **ERROR** — add fingerprint |
 
 Fix all **ERRORs** before delivery. Present **WARNINGs** with notes in the quality metrics footer.
 
@@ -529,7 +531,7 @@ Files like `BIO60R_Specification.md`, `IAMENUR_Doc.md`, `{PGM}_Technical_Specifi
 | Verification Rules | <X>% | ✅/❌ <N>/7 rules passed |
 | Business Rules Coverage | <X>% | ✅/⚠️ <N> BRs for <M> subroutine clusters |
 | Source Traceability | ✅/⚠️ | Line numbers included: YES/NO |
-| Freshness | Current | ✅ Generated <YYYY-MM-DD> |
+| Freshness | Current | ✅ Generated <YYYY-MM-DD> · source changed <YYYY-MM-DD HH:MM> · <N> lines · repo <SCHEMA> |
 
 **Validation Warnings (if any):**
 - <Warning text>
@@ -579,6 +581,7 @@ Each script writes its output next to the source `.md` with the `.docx` / `.pdf`
 
 **Operational rules:**
 
+- **Staleness gate** — if the `.md` being exported was **not generated in this session**, run `ia_member_lookup(member_name)` and compare against the doc's Freshness fingerprint line (grep that **one line only** from the file — the single sanctioned read under `docs/program-specs/`; never read other content). If the changed date/time or line count differ, stop: tell the user the source has changed since the doc was generated and offer to regenerate before exporting.
 - **One format at a time** — only generate the format the user asked for. Don't produce both unless explicitly requested.
 - **Missing dependency** — if a script exits with `Error: python-docx is not installed` (or `reportlab`), run the printed `pip install …` command, then re-run the conversion. Do not silently swap to a different tool.
 - **No network calls expected** — both scripts are self-contained. The DOCX converter only reaches `mermaid.ink` if it encounters a ```` ```mermaid ```` fenced block; specs produced by this skill use text-based ASCII trees instead, so this path is not exercised.
@@ -615,6 +618,7 @@ Each script writes its output next to the source `.md` with the `.docx` / `.pdf`
 | Output filename must match canonical pattern `{PGM}_{CanonicalDocType}.md` from Step 7.5 | CanonicalDocType ∈ {Technical_Specification, Functional_Document, Operations_Guide, Architecture_Review, Test_Case_Document}, no version suffix; any other shape = **ERROR**, do not write |
 | Run the Step 1.5 existence check before any `ia_*` call; if the canonical doc exists, surface it (date + link) and get confirmation before regenerating | Avoids silently regenerating a doc the user already has and avoids wasting iA calls when they decline |
 | `TodoWrite` must run after Step 1.5 and before any `ia_*` MCP call | Without an explicit plan, agents skip verification, invent filenames, or drop steps; the todo list is the agent's self-checklist |
+| Never make an absolute access-method claim ("all data access via SQL", "no native I/O") without in-session proof from F-specs + a native-opcode source search | A later mod that adds native I/O turns a confident absolute into a QA-visible falsehood; absolutes require machine proof, not impressions |
 
 ---
 
@@ -639,6 +643,7 @@ Each script writes its output next to the source `.md` with the `.docx` / `.pdf`
 | Regenerated a doc that already exists without asking | Replaced the user's current spec, or re-ran all the iA queries when they'd have declined | Step 1.5 is mandatory — list the folder, surface the existing canonical doc (date + link), get confirmation before any `ia_*` call |
 | Skipped `TodoWrite` kickoff | Agent jumped straight from Step 1.5 to `ia_program_spec_bundle` | Step 1.6 is mandatory; create the todo list before any `ia_*` call |
 | Missing ASCII process flow tree | Generated doc has no visual flow in the section required by its template | One ASCII tree (fenced `text` block, box-drawing chars) per template-required section |
+| Stale spec vs live source | QA flags operations (e.g. native READ/WRITE) the doc says don't exist; doc line refs don't match current source | The doc describes an older source version. Compare its Freshness fingerprint to `ia_member_lookup` (changed date + line count) — if the member changed after generation, regenerate; don't patch the old doc |
 
 ---
 

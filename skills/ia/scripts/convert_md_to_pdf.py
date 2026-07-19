@@ -592,7 +592,6 @@ def md_to_pdf_elements(md_content: str, doc_title: str = '') -> List[Flowable]:
     styles = make_styles()
     elements = []
     lines = md_content.split('\n')
-    section_count = 0
     _, meta_skip = extract_metadata(md_content)
     i = meta_skip
     while i < len(lines):
@@ -614,9 +613,8 @@ def md_to_pdf_elements(md_content: str, doc_title: str = '') -> List[Flowable]:
             elements.append(Paragraph(inline_md_to_xml(line[4:].strip()), styles['h3']))
             i += 1
         elif line.startswith('## '):
-            section_count += 1
-            if section_count >= 2:
-                elements.append(PageBreak())
+            # No forced page break per section — headings use keepWithNext
+            # so they never strand alone at the bottom of a page.
             elements.append(Spacer(1, 8))
             elements.append(Paragraph(inline_md_to_xml(line[3:].strip()), styles['h2']))
             elements.append(SectionRule())
