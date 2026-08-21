@@ -47,6 +47,16 @@ COLOR_INLINE_CODE = RGBColor(0xc7, 0x25, 0x4e)   # Code red
 COLOR_LINK = RGBColor(0x31, 0x82, 0xce)          # Link blue
 COLOR_CODE_TEXT = RGBColor(0x2d, 0x37, 0x48)     # Code block text
 
+# Unified-diff palette (GitHub's), used by ```diff fences in comparison reports.
+DIFF_ADD_BG_HEX = 'E6FFEC'
+DIFF_DEL_BG_HEX = 'FFEBE9'
+DIFF_CTX_BG_HEX = 'F6F8FA'
+DIFF_HDR_BG_HEX = 'DDF4FF'
+COLOR_DIFF_ADD = RGBColor(0x0a, 0x5c, 0x2e)      # Added line text
+COLOR_DIFF_DEL = RGBColor(0x8b, 0x1a, 0x1a)      # Removed line text
+COLOR_DIFF_HDR = RGBColor(0x05, 0x50, 0xae)      # @@ hunk header
+COLOR_DIFF_GUTTER = RGBColor(0x8c, 0x95, 0x9f)   # RRN gutter
+
 CODE_BG_HEX = 'F7FAFC'
 INLINE_CODE_BG_HEX = 'F1F5F9'
 HEADER_ROW_HEX = '2B6CB0'
@@ -424,6 +434,66 @@ def add_mermaid_diagram(doc, code_lines: List[str]) -> bool:
 
 
 # ── Code blocks ────────────────────────────────────────────────────────
+
+
+def add_diff_block(doc, lines: List[str]):
+    """Render a ```diff fence git-style: green additions, red removals.
+
+    Recognises the dual-RRN gutter emitted by build_version_diff.py
+    (``+  123 | 129 | code``) and greys the gutter so the code stands out.
+    """
+    for idx, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith('@@'):
+            bg, fg, bold = DIFF_HDR_BG_HEX, COLOR_DIFF_HDR, True
+        elif line.startswith('+'):
+            bg, fg, bold = DIFF_ADD_BG_HEX, COLOR_DIFF_ADD, False
+        elif line.startswith('-'):
+            bg, fg, bold = DIFF_DEL_BG_HEX, COLOR_DIFF_DEL, False
+        else:
+            bg, fg, bold = DIFF_CTX_BG_HEX, COLOR_CODE_TEXT, False
+
+        p = doc.add_paragraph()
+        p.paragraph_format.space_before = Pt(0)
+        p.paragraph_format.space_after = Pt(0)
+        p.paragraph_format.line_spacing = 1.0
+        p.paragraph_format.left_indent = Cm(0.4)
+        p.paragraph_format.right_indent = Cm(0.4)
+
+        # Split "<marker><gutter>|<gutter>|" from the code so the numbers recede.
+        gutter, code = '', line if line else ' '
+        if not stripped.startswith('@@'):
+            bar = line.find('│')
+            if bar != -1:
+                bar2 = line.find('│', bar + 1)
+                if bar2 != -1:
+                    gutter, code = line[:bar2 + 1], line[bar2 + 1:] or ' '
+
+        if gutter:
+            run = p.add_run(gutter)
+            run.font.name = 'Consolas'
+            run.font.size = Pt(9)
+            run.font.color.rgb = COLOR_DIFF_GUTTER
+        run = p.add_run(code)
+        run.font.name = 'Consolas'
+        run.font.size = Pt(9.5)
+        run.font.color.rgb = fg
+        run.bold = bold
+        set_paragraph_shading(p, bg)
+
+        pPr = p._p.get_or_add_pPr()
+        pBdr = OxmlElement('w:pBdr')
+        for side, on in (('top', idx == 0), ('bottom', idx == len(lines) - 1),
+                         ('left', True), ('right', True)):
+            if not on:
+                continue
+            b = OxmlElement(f'w:{side}')
+            b.set(qn('w:val'), 'single')
+            b.set(qn('w:sz'), '4')
+            b.set(qn('w:space'), '4')
+            b.set(qn('w:color'), 'CBD5E0')
+            pBdr.append(b)
+        pPr.append(pBdr)
 
 
 def add_code_block(doc, lines: List[str], language: str = ''):
@@ -974,7 +1044,10 @@ def convert_md_to_docx(md_file: str, docx_file: Optional[str] = None,
     if cover:
         add_cover_page(doc, meta, title)
         add_toc_page(doc)
-    else:
+    elif meta_skip:
+        # Only when a metadata block was consumed — meta_skip then points past
+        # the H1, so the body loop below never renders it. With no metadata
+        # block meta_skip is 0 and the body renders the H1 itself.
         p = doc.add_heading(level=1)
         parse_inline_formatting(p, title)
         p.alignment = WD_ALIGN_PARAGRAPH.LEFT
@@ -1029,6 +1102,9 @@ def convert_md_to_docx(md_file: str, docx_file: Optional[str] = None,
             if i < len(lines):
                 i += 1  # closing fence
             if lang.lower() == 'mermaid' and add_mermaid_diagram(doc, code_lines):
+                continue
+            if lang.lower() == 'diff':
+                add_diff_block(doc, code_lines)
                 continue
             add_code_block(doc, code_lines, lang)
             continue

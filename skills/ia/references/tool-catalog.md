@@ -1,4 +1,4 @@
-# iA Tool Catalog (51 Tools)
+# iA Tool Catalog (54 Tools)
 
 **Rule:** Prefer the dedicated `ia_*` tools.
 
@@ -20,6 +20,7 @@
 
 | Tool | Purpose |
 |------|---------|
+| `ia_object_context_matrix` | **One-call full context for any object** — everything it uses and everything that uses it, bucketed into sections (update/input/output files, display + printer files, calls, callers) and enriched with each referenced object's attribute, description, record formats, key fields and select/omit. Replaces `ia_object_references` + `ia_find_object_usages` + one `ia_object_lookup` per referenced object |
 | `ia_find_object_usages` | Broad where-used: all objects referencing `object_name` (optional type + library filter) |
 | `ia_object_references` | Inverse: what an object references/contains (modules in SRVPGM, files used) |
 | `ia_reference_count` | Lightweight: counts of references grouped by type |
@@ -90,5 +91,7 @@
 | `ia_klist_usage` | KLIST/KFLD key list definitions; `%` wildcards in kfld_name |
 | `ia_application_area` | Forward: area → objects; Reverse: object → areas (`%` supported) |
 | `ia_sql_names` | SQL long/short name mapping for **routines** (procedures/functions) |
+| `ia_variant_summary` | Cross-library comparison roll-up — counts of IDENTICAL / COSMETIC / LOGIC / SINGLE members. Fixed-size result; call before `ia_member_variants` |
+| `ia_member_variants` | Per-member/per-library variant letters + verdict. Same letter = identical source. Defaults to `verdict=LOGIC` |
 | `ia_sql_table_names` | SQL long↔short name mapping for **tables + columns** (`CREATE TABLE ... FOR SYSTEM NAME`); resolve a long name to its 10-char system name before where-used. Complements `ia_sql_names` |
 | `ia_program_files` | Program file usage with PREFIX/RENAME; filter by member/library |

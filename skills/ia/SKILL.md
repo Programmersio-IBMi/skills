@@ -1,13 +1,13 @@
 ---
 name: ia
-description: Guide for using iA by programmers.io MCP tools to analyze IBM i programs — dependency tracing, call hierarchies, field impact, source retrieval, and program documentation. ALWAYS use this skill for ANY IBM i analysis question.
+description: Guide for using iA by programmers.io MCP tools to analyze IBM i programs — dependency tracing, call hierarchies, field impact, source retrieval, program documentation, and change impact analysis with effort estimation. ALWAYS use this skill for ANY IBM i analysis question.
 ---
 
 # iA Impact Analysis — Agent Guide
 
 iA by [programmers.io](https://programmers.io/ia/) pre-parses IBM i source (RPG, CL, COBOL, DDS) into a queryable repository accessed through the `ia_*` MCP tools.
 
-**Goal:** Answer most questions in 1-2 tool calls. Consult [quick-reference.md](references/quick-reference.md) for tool selection, [tool-catalog.md](references/tool-catalog.md) for the full 51-tool list.
+**Goal:** Answer most questions in 1-2 tool calls. Consult [quick-reference.md](references/quick-reference.md) for tool selection, [tool-catalog.md](references/tool-catalog.md) for the full 54-tool list.
 
 ## Rule Zero — Always Query iA, Never the Workspace
 
@@ -41,6 +41,10 @@ If a tool returns zero rows for a name you passed, the object/file/field **does 
 | `ia_rpg_source` returns nothing | confirm `MEMBER_TYPE` first (`ia_member_lookup`): CL/CLLE/CLP → `ia_cl_source`; COBOL isn't in the RPG tables. Empty ≠ missing | assuming the source doesn't exist |
 | "Obsolete / unreferenced objects" | `ia_unused_objects` — source physical files (QRPGLESRC, QCLSRC…) are already excluded; remaining `*FILE` rows show `OBJECT_ATTRIBUTE` | treating every unreferenced `*FILE` as dead — DSPF/PRTF and SQL-only tables can be false positives |
 | Data files vs source files in a library | `ia_object_list(object_attribute='PF-DATA')` for data files, `'PF-SRC'` for source files; plain `PF` returns both with a `pf_kind` label | assuming a source library (QRPGLESRC etc.) has data files — it usually has none |
+| Full context of object X (what it uses **and** what uses it) / "object context matrix" | `ia_object_context_matrix(object_name=X)` — one call, pre-bucketed by usage mode, with each referenced object's attribute + description | `ia_object_references` + `ia_find_object_usages` — neither returns the *referenced* object's attribute or description, so you cannot split display/printer files from data files without one extra lookup per object |
+| "Onboard a new developer on menu X", "menu → program → file mapping" | load [onboarding-guide.md](references/onboarding-guide.md) — menu-scoped reading document | [app-map.md](references/app-map.md) — same data, but its deliverable is a 3D graph, not something you can read or hand to someone |
+| Menu **option numbers / option text** for menu X | the menu's source members — `{MENU}QQ` (`MNUCMD`) holds `NNNN CALL PGM(...)`, `{MENU}` (`MNUDDS`) holds the text | `ia_call_hierarchy` — it returns *which* programs the menu launches, but `CALL_SEQUENCE` is empty on those rows, so it can tell you nothing about option order |
+| "What breaks if I change / resize / drop X?", "how long will this change take?" | load [change-impact-analysis.md](references/change-impact-analysis.md) — classify the change first, then run the class-specific traps + estimate | a bare `ia_find_object_usages` — where-used is the *start* of a change assessment, not the answer; it misses DS offsets, KLIST keys and REFFLD cascade entirely |
 
 ## Top 10 Tools (80% of Queries)
 
@@ -80,6 +84,8 @@ If a tool returns zero rows for a name you passed, the object/file/field **does 
 
 Present as four sections: **Direct (NEEDS_CHANGE)**, **Direct (NEEDS_RECOMPILE)**, **Structural Dependents**, **Programs via LF**.
 
+> This answers *what references the field*. If the user is actually **about to change something** — resize/retype/drop a field, alter a parameter, retire a file — load [change-impact-analysis.md](references/change-impact-analysis.md) instead. It classifies the change first, adds the traps that class carries (DS offsets, KLIST partial keys, REFFLD cascade, `*SRVPGM` signatures), and produces a costed estimate workbook.
+
 ## When to Chain
 
 **DO chain:** `*SRVPGM` in results (amplifier — check what binds to it), field impact (run all steps), a **SQL long name** before any system-name tool (resolve via `ia_sql_table_names` → use the `system_short_name`).
@@ -102,8 +108,10 @@ Present as four sections: **Direct (NEEDS_CHANGE)**, **Direct (NEEDS_RECOMPILE)*
 | Empty results | Object/file not found under that name (Rule Two), or scheduler-invoked / external |
 | `REFERENCE_SOURCE = O` | Detected from compiled object |
 | `REFERENCE_SOURCE = S` | Detected from source code |
-| `REFERENCE_USAGE = I` | Implicit (via binding directory) |
-| `REFERENCE_USAGE = E` | Explicit (direct bind/call) |
+| `REFERENCE_USAGE` on a **`*FILE`** row | **File access mode:** `I`=Input, `O`=Output, `U`=Update, `C`=**Combined** (a workstation/display file opened for read *and* write — not "create") — and they combine (`I/O`, `I/U`, `O/U`, `I/O/U`, `C/O`) |
+| `REFERENCE_USAGE` on `*SRVPGM` / `*MODULE` / `*BNDDIR` | `I` = Implicit (via binding directory), `E` = Explicit (direct bind/call) |
+
+**`REFERENCE_USAGE` means two different things depending on the row's type** — on `*FILE` rows `I` is *Input*, not *Implicit*. Read the type first. The separate `FILE_USAGES` column is **empty in current repositories** — never take file access mode from it.
 
 **Empty results with library filter:** Report the negative explicitly. Don't silently retry without filter.
 
@@ -137,10 +145,15 @@ Do not attempt to diagnose server-side issues or retry indefinitely.
 | Need | Load |
 |------|------|
 | Tool selection unclear | [quick-reference.md](references/quick-reference.md) |
-| Full 51-tool list | [tool-catalog.md](references/tool-catalog.md) |
+| Full 54-tool list | [tool-catalog.md](references/tool-catalog.md) |
 | Complex analysis chains | [query-flows.md](references/query-flows.md) |
 | Analysis playbooks | [playbook.md](references/playbook.md) |
 | Program documentation | [program-documentation.md](references/program-documentation.md) |
+| Impact + effort of a **planned change** (resize/drop/rename a field, change a parm, retire a file) + estimate workbook | [change-impact-analysis.md](references/change-impact-analysis.md) |
+| Object context matrix (everything around one object) + downloads | [object-context-matrix.md](references/object-context-matrix.md) |
+| Onboard a new developer onto an application (menu → program → file) | [onboarding-guide.md](references/onboarding-guide.md) |
+| Compare multiple versions of a program (across libraries) + side-by-side Excel diff | [version-comparison.md](references/version-comparison.md) |
+| Which members differ across libraries, repository-wide + Excel workbook | [member-diff.md](references/member-diff.md) |
 | Test case document for a program (QA/UAT scripts) | [test-case-generation.md](references/test-case-generation.md) |
 | Visual flowchart of a program (single-page HTML) | [flowchart.md](references/flowchart.md) |
 | 3D app map of a library or application area (interactive HTML) | [app-map.md](references/app-map.md) |

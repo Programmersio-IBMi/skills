@@ -14,6 +14,8 @@ This directory contains specialized documentation templates for different audien
 | [`template-operations.md`](template-operations.md) | Operations, Support Team | Runtime, monitoring, troubleshooting | 10 sections + operational readiness | Operations runbooks, support guides |
 | [`template-testcases.md`](template-testcases.md) | QA / UAT Testers | Manual execution test scripts, traceability | 6 sections + traceability matrix + sign-off | Test case documents, UAT preparation |
 
+**Onboarding deliverable template** (used by [onboarding-guide.md](../onboarding-guide.md), not audience-selected): [`template-onboarding-guide.md`](template-onboarding-guide.md) — the menu-scoped New-Developer Onboarding Guide. Its subject is a `*MENU`, not a program, so it is outside the audience-selection logic below.
+
 ---
 
 ## Template Selection Logic
