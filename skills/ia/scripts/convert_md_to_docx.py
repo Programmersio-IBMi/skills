@@ -433,6 +433,61 @@ def add_mermaid_diagram(doc, code_lines: List[str]) -> bool:
         return False
 
 
+# ── Images ─────────────────────────────────────────────────────────────
+
+
+IMAGE_LINE_RE = re.compile(r'^!\[(?P<alt>[^\]]*)\]\(\s*(?P<src>[^)\s]+)(?:\s+"[^"]*")?\s*\)$')
+
+
+def add_local_image(doc, src: str, alt: str, base_dir: str) -> bool:
+    """Embed a local image referenced by ``![alt](src)``, with a caption.
+
+    The picture is scaled down to the text width but never enlarged past its
+    natural size, so a screenshot of a small dialog stays dialog-sized instead
+    of being blown up to full width. Returns False when the file is missing or
+    unreadable, so the caller can fall back to rendering the line as text.
+    """
+    if re.match(r'^[a-z][a-z0-9+.-]*://', src, re.I):
+        return False  # remote images are not fetched; render the markdown as-is
+    path = src if os.path.isabs(src) else os.path.normpath(os.path.join(base_dir, src))
+    if not os.path.isfile(path):
+        sys.stderr.write(f"[warn] image not found, skipping: {src}\n")
+        return False
+
+    sec = doc.sections[0]
+    max_width = sec.page_width - sec.left_margin - sec.right_margin
+
+    para = doc.add_paragraph()
+    para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    para.paragraph_format.space_before = Pt(8)
+    para.paragraph_format.space_after = Pt(2)
+    # Glue the picture to its caption so a page break can't separate them.
+    para.paragraph_format.keep_with_next = True
+    try:
+        para.add_run().add_picture(path)
+    except Exception as exc:
+        sys.stderr.write(f"[warn] could not embed image {src}: {exc}\n")
+        para._element.getparent().remove(para._element)
+        return False
+
+    shape = doc.inline_shapes[-1]
+    if shape.width > max_width:
+        shape.height = int(shape.height * max_width / shape.width)
+        shape.width = int(max_width)
+
+    caption = alt.strip()
+    if caption:
+        cap = doc.add_paragraph()
+        cap.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        cap.paragraph_format.space_before = Pt(0)
+        cap.paragraph_format.space_after = Pt(10)
+        run = cap.add_run(strip_markdown_formatting(caption))
+        run.italic = True
+        run.font.size = Pt(9)
+        run.font.color.rgb = COLOR_MUTED
+    return True
+
+
 # ── Code blocks ────────────────────────────────────────────────────────
 
 
@@ -1030,6 +1085,9 @@ def convert_md_to_docx(md_file: str, docx_file: Optional[str] = None,
     if docx_file is None:
         docx_file = os.path.splitext(md_file)[0] + '.docx'
 
+    # Relative image paths in the markdown resolve against the markdown's folder.
+    base_dir = os.path.dirname(os.path.abspath(md_file))
+
     title = extract_title(raw)
     meta, meta_skip = extract_metadata(raw)
 
@@ -1072,6 +1130,14 @@ def convert_md_to_docx(md_file: str, docx_file: Optional[str] = None,
                 heading_text = strip_markdown_formatting(m.group(2)).strip()
                 # Trim trailing # tokens (ATX style)
                 heading_text = re.sub(r'\s+#+\s*$', '', heading_text)
+                # A hand-written contents list duplicates the generated TOC
+                # page, so drop it (and any rule closing it) when we emit one.
+                if cover and level <= 2 and re.fullmatch(
+                        r'(table of\s+)?contents', heading_text, re.I):
+                    i += 1
+                    while i < len(lines) and not lines[i].lstrip().startswith('#'):
+                        i += 1
+                    continue
                 p = doc.add_heading(level=level)
                 # Inline formatting allowed inside heading text
                 parse_inline_formatting(p, heading_text)
@@ -1107,6 +1173,13 @@ def convert_md_to_docx(md_file: str, docx_file: Optional[str] = None,
                 add_diff_block(doc, code_lines)
                 continue
             add_code_block(doc, code_lines, lang)
+            continue
+
+        # Standalone image: ![alt](path) on a line of its own
+        m_img = IMAGE_LINE_RE.match(stripped)
+        if m_img and add_local_image(doc, m_img.group('src'),
+                                     m_img.group('alt'), base_dir):
+            i += 1
             continue
 
         # Tables
@@ -1165,6 +1238,8 @@ def convert_md_to_docx(md_file: str, docx_file: Optional[str] = None,
             if is_list_line(cur):
                 break
             if cur_strip in ('---', '***', '___'):
+                break
+            if IMAGE_LINE_RE.match(cur_strip):
                 break
             para_lines.append(cur.rstrip())
             i += 1

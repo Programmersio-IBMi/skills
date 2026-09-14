@@ -52,12 +52,12 @@ Then:
 
 ## 3. Menu option numbers — not in the call hierarchy
 
-`ia_call_hierarchy(MENU, 'CALLEES')` returns *which* programs a menu launches but **not the option number or the option text**: those rows come from the object cross-reference fallback, so `CALL_SEQUENCE` is empty. The mapping lives in the menu's two source members, and **no `ia_*` tool exposes DDS/menu source today** — read them directly:
+`ia_call_hierarchy(MENU, 'CALLEES')` returns *which* programs a menu launches but **not the option number or the option text**: those rows come from the object cross-reference fallback, so `CALL_SEQUENCE` is empty. The mapping lives in the menu's two source members, read with **`ia_dds_source`**:
 
 - **`{MENU}QQ`, member type `MNUCMD`** — one line per option, `NNNN CALL PGM(TARGET)`. This is the authoritative option → program mapping.
 - **`{MENU}`, member type `MNUDDS`** — the screen. Option numbers appear as positioned literals (`5  7'1.'`) and the option text on the same screen row (`5 10'Customer Maintenance'`). **Join by screen row**, not by sequence number.
 
-Retrieve both members' source lines in RRN order and read the option numbers, target programs and screen text out of them directly.
+Pull both members in a single call with a wildcard — `ia_dds_source(member_name='{MENU}%')` — then split the result by its `library_name` / `member_name` / `member_type` columns. Two guards on the wildcard: it also drags in unrelated members sharing the prefix (`CASEDSP`, `CASEPRT` for `CASE%`), so narrow with `member_type='MNUCMD'` when that happens; and if the menu exists in more than one library the copies arrive back to back with `source_rrn` restarting, so pass `library_name` or split on it before reading.
 
 If the `MNUCMD` member is absent, fall back to the call-hierarchy list, order it alphabetically, and **say in the document that option numbers could not be recovered** — never number the options yourself.
 

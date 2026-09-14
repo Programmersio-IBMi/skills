@@ -15,7 +15,7 @@
 | `ia_call_hierarchy` | Call tree (callers/callees) |
 | `ia_program_detail(section=*ALL)` | Everything about program X |
 | `ia_unused_objects` | Dead code candidates |
-| `ia_rpg_source` / `ia_cl_source` | Read source code line-by-line |
+| `ia_rpg_source` / `ia_cl_source` / `ia_synon_source` / `ia_dds_source` | Read source code line-by-line (RPG / CL / Synon 2E / DDS) |
 | `ia_code_complexity(member=*ALL)` | Complexity hotspots |
 | `ia_object_lookup` | Find object by name (% wildcards) |
 | `ia_dashboard` | Repository health overview |
@@ -77,6 +77,9 @@
 | Raw RPG/CL token stream? | `ia_rpg_source_tokens`, `ia_cl_source_tokens` |
 | Source code for member X (RPG)? | `ia_rpg_source` |
 | Source code for member X (CL)? | `ia_cl_source` |
+| Source code for member X (DDS — DSPF/PF/LF/PRTF/menu)? | `ia_dds_source` |
+| Screen field labels for a display file? | `ia_dds_source` — the RPG has only programmatic names |
+| Menu option numbers and option text? | `ia_dds_source` — `{MENU}QQ` (MNUCMD) + `{MENU}` (MNUDDS); recipe in onboarding-guide.md §3 |
 | F-specs / D-specs / source declarations in X? | `ia_rpg_source(source_spec='F'/'D')` |
 | Search RPG source for keyword? | `ia_rpg_source_search` |
 | Find a BIF / `%keyword` (e.g. `%CHECK`) in source? | `ia_rpg_source_search` (pass the literal `%`) |
@@ -89,5 +92,6 @@
 | Procedure-level callers? | `ia_procedure_xref` |
 | Procedure signature? | `ia_procedure_params` |
 | Batch job detection? | `ia_cl_jobs` |
-| **Document program X?** | [program-documentation.md](program-documentation.md) |
+| **Document program X?** | [program-documentation.md](program-documentation.md) — RPG / CL members |
+| **Document a Synon / CA 2E function (action diagram)?** | [synon-documentation.md](synon-documentation.md) — only when a 2E signal is present (Synon/2E named, `_AD` supplied, or the member resolves as Synon source) |
 | **Export generated doc to Word/PDF?** | `scripts/convert_md_to_docx.py` / `scripts/convert_md_to_pdf.py` (see [program-documentation.md → Step 9](program-documentation.md)) |

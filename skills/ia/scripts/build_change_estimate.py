@@ -18,7 +18,17 @@ Required input table (see references/change-impact-analysis.md §7):
     |---|---|---|---|---|---|---|
     | CASELIB | ORDENT | *PGM | RPGLE | CHANGE | 1840 | rewrites CUSTNO |
 
-    Impact is one of CHANGE / RECOMPILE / REBUILD / REVIEW / NONE.
+    Impact is one of CHANGE / RECOMPILE / REBUILD / REVIEW / NONE. A blank
+    Impact is not NONE — it prices as UNCLASSIFIED and is reported as a warning,
+    because an unfilled cell is not an assessment.
+
+    Attribute is the source MEMBER_TYPE (SQLRPGLE, PFSQL, RPGLE, DSPF …), not the
+    compiled OBJECT_ATTR — the two diverge for anything built through the SQL
+    precompiler, and the estimate is about the source a developer opens.
+
+    A *COPYBOOK row cannot be RECOMPILE or REBUILD: a /COPY member has no object
+    to rebuild, so that recompile belongs on the programs that /COPY it. Such a
+    row prices as a review and is named as a warning.
 
 Requires:  pip install openpyxl
 Usage:     python build_change_estimate.py ASSESSMENT.md [--xlsx] [--narrowing]
@@ -42,10 +52,11 @@ WANTED = ["library", "object", "type", "attribute", "impact", "lines", "notes"]
 A_PGM_S, A_PGM_M, A_PGM_L = 2, 3, 4
 A_PGM_RECOMPILE = 5
 A_PF, A_LF, A_DSPF, A_PRTF, A_COPYBOOK, A_OTHER, A_REVIEW = 6, 7, 8, 9, 10, 11, 12
+A_OBJ_REBUILD, A_SRVPGM_REBIND, A_UNCLASSIFIED = 13, 14, 15
 A_DESIGN, A_CUTOVER, A_UNIT, A_SYSTEST, A_UAT, A_DATACONV, A_CONTINGENCY = (
-    14, 15, 16, 17, 18, 19, 20
+    17, 18, 19, 20, 21, 22, 23
 )
-A_BAND_S, A_BAND_M, A_HOURS_DAY = 22, 23, 24
+A_BAND_S, A_BAND_M, A_HOURS_DAY = 25, 26, 27
 
 ASSUMPTIONS = [
     ("Program change — S (small)", 1.5,
@@ -60,6 +71,14 @@ ASSUMPTIONS = [
     ("Copybook change", 0.15, "hours"),
     ("Other object change", 0.15, "hours"),
     ("Review-only item", 0.5, "hours; inspect and confirm no change needed"),
+    ("Object rebuild / level check — non-program", 0.15,
+     "hours; recreate a PF/LF/DSPF/PRTF or other object, no source edit"),
+    ("Service program rebind", 0.15,
+     "hours; CRTSRVPGM after a bound module changes — not a compile"),
+    ("Unclassified item", 0.5,
+     "hours; the Impact cell was blank, or names an action the artifact cannot "
+     "take — priced as a review so the row is visible, then classify it and "
+     "regenerate"),
     ("", None, ""),
     ("Impact review & change design", 2.0, "hours, fixed"),
     ("Cutover / implementation", 2.0, "hours, fixed"),
@@ -83,18 +102,35 @@ RATE_ROW = {
     "LF_REBUILD": A_LF,
     "DSPF_CHANGE": A_DSPF,
     "PRTF_CHANGE": A_PRTF,
+    "DSPF_RECOMPILE": A_OBJ_REBUILD,
+    "PRTF_RECOMPILE": A_OBJ_REBUILD,
+    "PF_RECOMPILE": A_OBJ_REBUILD,
+    "OTHER_RECOMPILE": A_OBJ_REBUILD,
+    "SRVPGM_REBIND": A_SRVPGM_REBIND,
     "COPYBOOK_CHANGE": A_COPYBOOK,
     "OTHER_CHANGE": A_OTHER,
     "REVIEW_ONLY": A_REVIEW,
-    "NO_COST": None,
+    "UNCLASSIFIED": A_UNCLASSIFIED,
+    "COPYBOOK_NOT_COMPILED": A_UNCLASSIFIED,
+    "NO_ACTION_REQUIRED": None,
 }
 
 PROGRAM_TYPES = {"*PGM", "*SRVPGM", "*MODULE"}
 PROGRAM_ATTRS = {"RPGLE", "SQLRPGLE", "RPG", "SQLRPG", "RPG38", "RPGIII",
                  "CLLE", "CLP", "CL", "CBLLE", "CBL", "PGM", "SRVPGM", "MODULE"}
 COPYBOOK_ATTRS = {"RPGLEINC", "CPYBK", "COPYBOOK", "INC", "SQLINC"}
-LF_ATTRS = {"LF", "INDEX", "VIEW", "LF38", "DDS_LF", "MQT"}
-PF_ATTRS = {"PF", "PF-DATA", "PF-SRC", "PF38", "TABLE", "PHYSICAL"}
+# A /COPY member has no compiled object, so its Type carries the "source-only
+# include" fact. Attribute cannot: the member type of a copybook is frequently
+# plain RPGLE, which would otherwise price a copybook as a program change.
+COPYBOOK_TYPES = {"*COPYBOOK", "*COPY", "*INCLUDE", "*INC"}
+# The SQL member types sit alongside their DDS equivalents: iA reports an SQL
+# view or index member as LFSQL and an SQL table as PFSQL or SQLTAB. Omit one
+# and it matches neither set, then falls through to the *FILE default and
+# prices a view rebuild as a physical-file change. (Member type DDL is *not* a
+# table here - it is used for stored-procedure source, so it stays out.)
+LF_ATTRS = {"LF", "INDEX", "VIEW", "LF38", "DDS_LF", "MQT", "LFSQL"}
+PF_ATTRS = {"PF", "PF-DATA", "PF-SRC", "PF38", "TABLE", "PHYSICAL", "PFSQL",
+            "SQLTAB"}
 
 
 def split_row(line: str) -> list[str]:
@@ -167,20 +203,60 @@ def classify(row: dict) -> str:
     otype = row.get("type", "").upper()
     attr = row.get("attribute", "").upper()
 
-    if impact in ("NONE", ""):
-        return "NO_COST"
+    # A blank Impact is not the same claim as NONE. NONE says "assessed, and
+    # nothing to do"; blank says nobody filled the cell in. Collapsing the two
+    # priced an unassessed row at zero under a label that read as a decision.
+    if impact == "":
+        return "UNCLASSIFIED"
+    if impact == "NONE":
+        return "NO_ACTION_REQUIRED"
     if impact == "REVIEW":
         return "REVIEW_ONLY"
-    # A level-check rebuild costs the same whatever the artifact is — without
-    # this, a DSPF or PF marked RECOMPILE would be priced at the full change
-    # rate. REBUILD keeps falling through to the type dispatch so that logical
-    # files still land on LF_REBUILD.
-    if impact == "RECOMPILE":
-        return "PGM_RECOMPILE"
-
     is_program = otype in PROGRAM_TYPES or attr in PROGRAM_ATTRS
-    if attr in COPYBOOK_ATTRS:
+    # Tested before every branch below: a copybook's member type is often
+    # RPGLE, which is in PROGRAM_ATTRS, so a program branch would claim it.
+    is_copybook = otype in COPYBOOK_TYPES or attr in COPYBOOK_ATTRS
+
+    # A /COPY member is never compiled. It has no object of its own — the
+    # compiler pulls its text into each consumer at that consumer's compile
+    # time, which is why changing a copybook means recompiling the programs
+    # that /COPY it and editing none of them. So RECOMPILE or REBUILD on a
+    # copybook row names an action that cannot happen: the rebuild belongs on
+    # the consumer rows, which carry it already. Pricing it as a rebuild would
+    # invent an artifact-free 0.15 h and hide the mis-fill, so it is treated as
+    # bad input — priced as a review, and named on stderr.
+    if is_copybook:
+        if impact in ("RECOMPILE", "REBUILD"):
+            return "COPYBOOK_NOT_COMPILED"
         return "COPYBOOK_CHANGE"
+
+    # A rebuild costs about the same whatever the artifact is, so pricing was
+    # never the problem — the label was. Every RECOMPILE row used to collapse
+    # onto PGM_RECOMPILE, which put display files, database files and service
+    # programs in a bucket named after programs. Each type gets its own basis so
+    # the Basis table says which *action* the hours buy: recompile source,
+    # recreate an object, rebuild an access path, or rebind. Order matters —
+    # DSPF/PRTF are *FILE too, so they must be tested before the *FILE
+    # catch-all. REBUILD still falls through to the type dispatch below.
+    if impact == "RECOMPILE":
+        if attr == "DSPF":
+            return "DSPF_RECOMPILE"
+        if attr == "PRTF":
+            return "PRTF_RECOMPILE"
+        # An access path rebuild is the same action whether the row says
+        # RECOMPILE or REBUILD, so both land on the one basis.
+        if attr in LF_ATTRS:
+            return "LF_REBUILD"
+        if attr in PF_ATTRS or otype == "*FILE":
+            return "PF_RECOMPILE"
+        # A *SRVPGM is not recompiled, it is rebound (CRTSRVPGM), and the
+        # rebind can force revalidation of every program bound to it.
+        if otype == "*SRVPGM":
+            return "SRVPGM_REBIND"
+        if is_program:
+            return "PGM_RECOMPILE"
+        return "OTHER_RECOMPILE"
+
     if is_program:
         return "PGM_CHANGE" if impact == "CHANGE" else "PGM_RECOMPILE"
     if attr in LF_ATTRS:
@@ -246,7 +322,7 @@ def build(out: Path, title: str, rows: list[dict], narrowing: bool) -> dict:
                 f'=IF($G{n}="S",Assumptions!$B${A_PGM_S},'
                 f'IF($G{n}="M",Assumptions!$B${A_PGM_M},Assumptions!$B${A_PGM_L}))'
             ))
-        elif basis == "NO_COST":
+        elif basis == "NO_ACTION_REQUIRED":
             det.cell(row=n, column=9, value=0)
         else:
             det.cell(row=n, column=9,
@@ -417,6 +493,19 @@ def main() -> int:
     for basis in sorted(counts):
         print(f"  {basis:<18} {counts[basis]}")
     print(f"  xlsx -> {out}")
+    if counts.get("UNCLASSIFIED"):
+        print(f"warning: {counts['UNCLASSIFIED']} row(s) have a blank Impact "
+              "cell and are priced as a review. Set Impact to CHANGE / "
+              "RECOMPILE / REBUILD / REVIEW / NONE and regenerate.",
+              file=sys.stderr)
+    if counts.get("COPYBOOK_NOT_COMPILED"):
+        named = ", ".join(r.get("object", "?") for r in rows
+                          if classify(r) == "COPYBOOK_NOT_COMPILED")
+        print(f"warning: {counts['COPYBOOK_NOT_COMPILED']} copybook row(s) are "
+              f"marked RECOMPILE or REBUILD and are priced as a review: "
+              f"{named}. A /COPY member has no object to rebuild — the "
+              "recompile belongs on the programs that /COPY it. Set the "
+              "copybook to CHANGE or NONE and regenerate.", file=sys.stderr)
     return 0
 
 
