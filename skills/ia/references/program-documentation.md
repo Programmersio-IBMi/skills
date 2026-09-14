@@ -2,6 +2,8 @@
 
 Use this guide whenever a user asks for a **technical program document** for an IBM i program. Follow every step in order.
 
+**Not for Synon / CA 2E functions.** If the target is a 2E function or the 2E-generated RPG behind one — the user says "Synon" / "2E" / "action diagram", an `*_AD` export is supplied, or `ia_member_lookup` resolves the name to a Synon source member — load [synon-documentation.md](synon-documentation.md) instead. Documenting generated 2E code as if it were hand-written yields a spec of the code generator, not of the business logic.
+
 ---
 
 ## ⛔ Rule Zero — Never Read Existing Documentation
@@ -106,30 +108,9 @@ If the request matches none, tell the user which canonical type you chose and wh
 
 ---
 
-## Step 1.6 — Todo List Kickoff
+## Step 1.6 — Track the remaining steps
 
-**After Step 1.5 (existing-doc check passed — the user either has no canonical doc or confirmed a regenerate) and before any `ia_*` MCP call, the agent MUST create a todo list via `TodoWrite` covering the rest of the workflow.** No iA tool call may run before this todo list exists.
-
-**Why:** Program documentation is a 9-step workflow with branching tool calls and conditional sub-steps. Without an explicit plan, agents drop verification, invent filenames, or skip the fields lookup. The todo list is both a contract with the user and the agent's own self-checklist.
-
-**Mandatory todo skeleton** (customize per audience and per program — drop N/A steps and add per-template subsections):
-
-```text
-- Step 2: Baseline inventory (ia_program_spec_bundle)
-- Step 2.5: Field lookup (ia_file_fields for every file in FILES — silent cache)
-- Step 3: Source + Business Rule Extraction (ia_rpg_source OR ia_cl_source)
-- Step 4: Confirm template selection (per Step 1 audience)
-- Step 5: Assemble document sections per template
-- Step 6: Render call hierarchy + ASCII process flow tree(s)
-- Step 7: Run Verification Rules pass
-- Step 7.5: Filename Resolution Gate (confirm canonical {PGM}_{DocType}.md target)
-- Step 8: Save to docs/program-specs/{PGM}/{filename} (overwrite if regenerate confirmed in Step 1.5)
-- Step 9: Export to DOCX/PDF (only on user request)
-```
-
-The agent may drop steps that are confirmed N/A (e.g., Step 3 trims if no callees, Step 9 only on request) but every remaining step must appear as a todo or be explicitly noted as skipped with a reason.
-
-**Hard-stop:** If the agent reaches Step 2 without having called `TodoWrite`, halt and create the todo list before proceeding.
+Steps 2–9 below are order-dependent. Keep a visible checklist of them (the host's task list if it has one, otherwise a short list in your reply), and when you drop a step as not applicable say so with the reason. Steps 7 (verification) and 7.5 (filename gate) are never dropped.
 
 ---
 
@@ -152,17 +133,7 @@ A footnote is **not** acceptable — always pause and ask. Silently selecting a 
 
 If LOOKUP returns zero rows, stop and tell the user the member was not found in iA. Suggest `ia_object_lookup(object_name='%X%')` with a wildcard.
 
-**⛔ HARD STOP — Any Mid-Process Doubt:**
-If any of the following arise during Steps 2–7, **pause and ask the user before continuing:**
-
-| Condition | What to Ask |
-|-----------|-------------|
-| Multiple versions in LOOKUP | "I found N versions — which library/source file should I document?" |
-| CALLED_BY_COUNT > 0 but CALLERS section is empty | "iA shows N caller(s) but couldn't resolve them. Want me to run `ia_find_object_usages` to trace them first?" |
-| Constant value suspicious (e.g. validator may be missing digits) | State the uncertainty inline in the BR and flag it in the quality report — do not silently assume |
-| Ambiguous build pipeline order or version mismatch | Note the uncertainty and flag in quality report |
-
-**General rule:** When in doubt, ask. A brief pause for clarification produces a more accurate document than a confident guess.
+**Uncertainty during Steps 2–7** is recorded, not escalated: state it inline where it occurs and again in the quality report. Two cases are exceptions because only the user can resolve them — several versions in LOOKUP (above) and a file whose library cannot be resolved (Step 3). If `CALLED_BY_COUNT` > 0 but the CALLERS section is empty, run `ia_find_object_usages` on the program yourself and document what it returns.
 
 **Bundle section → document section mapping** (sections refer to the new template-developer.md structure):
 
@@ -617,7 +588,6 @@ Each script writes its output next to the source `.md` with the `.docx` / `.pdf`
 | Every document must contain at least one ASCII process flow tree in the section required by its template | Visual flow trees are how readers navigate IBM i programs; their absence reduces the doc to prose with no decision-path overview |
 | Output filename must match canonical pattern `{PGM}_{CanonicalDocType}.md` from Step 7.5 | CanonicalDocType ∈ {Technical_Specification, Functional_Document, Operations_Guide, Architecture_Review, Test_Case_Document}, no version suffix; any other shape = **ERROR**, do not write |
 | Run the Step 1.5 existence check before any `ia_*` call; if the canonical doc exists, surface it (date + link) and get confirmation before regenerating | Avoids silently regenerating a doc the user already has and avoids wasting iA calls when they decline |
-| `TodoWrite` must run after Step 1.5 and before any `ia_*` MCP call | Without an explicit plan, agents skip verification, invent filenames, or drop steps; the todo list is the agent's self-checklist |
 | Never make an absolute access-method claim ("all data access via SQL", "no native I/O") without in-session proof from F-specs + a native-opcode source search | A later mod that adds native I/O turns a confident absolute into a QA-visible falsehood; absolutes require machine proof, not impressions |
 
 ---
@@ -641,7 +611,6 @@ Each script writes its output next to the source `.md` with the `.docx` / `.pdf`
 | Rendered an exhaustive fields table | Section 3 has 200-row field tables when the program touches 8 fields | Drop the table entirely — fields are inline-only where the program logic references them |
 | Picked a filename without running Step 7.5 | New file lands as `BIO60R_Specification.md` or a stray `_v{N}` name | Step 7.5 is mandatory; the only legitimate filename is `{PGM}_{CanonicalDocType}.md` |
 | Regenerated a doc that already exists without asking | Replaced the user's current spec, or re-ran all the iA queries when they'd have declined | Step 1.5 is mandatory — list the folder, surface the existing canonical doc (date + link), get confirmation before any `ia_*` call |
-| Skipped `TodoWrite` kickoff | Agent jumped straight from Step 1.5 to `ia_program_spec_bundle` | Step 1.6 is mandatory; create the todo list before any `ia_*` call |
 | Missing ASCII process flow tree | Generated doc has no visual flow in the section required by its template | One ASCII tree (fenced `text` block, box-drawing chars) per template-required section |
 | Stale spec vs live source | QA flags operations (e.g. native READ/WRITE) the doc says don't exist; doc line refs don't match current source | The doc describes an older source version. Compare its Freshness fingerprint to `ia_member_lookup` (changed date + line count) — if the member changed after generation, regenerate; don't patch the old doc |
 
@@ -734,66 +703,9 @@ FORMATTING GUIDELINES
 - Assume IBM i knowledge but no familiarity with this specific program
 - Do not infer or invent logic not present in the source
 
---------------------------------
-iA-SPECIFIC RULES (layered on top)
---------------------------------
-MANDATORY SEQUENCE BEFORE WRITING:
-0a. Existing-doc check (Step 1.5)                → list docs/program-specs/{X}/; if {X}_{DocType}.md exists, surface it (last-modified date + link) and confirm regenerate BEFORE any ia_* call
-0b. TodoWrite                                    → create todo list covering Step 2 → Step 9 BEFORE any ia_* call
-1. ia_program_spec_bundle(program_name=X)        → all 8 inventory sections in one call
-2. ia_program_files(member_name=X)               → file usage + FILE_TEXT descriptions + library
-3. ia_file_fields(file_name=F, library_name=L)   → every field's description, held as SILENT in-memory lookup (do NOT render as a table)
-4. ia_rpg_source OR ia_cl_source (by MEMBER_TYPE) → business rule extraction from source
-5. ia_procedure_params(member_name=X)            → entry parameters (mandatory even if PARAMS returned rows)
-
-If the bundle errors, fall back to the seven individual tools.
-
-NEVER read the contents of any file under docs/program-specs/. Each new document
-must be generated 100% from iA tool output. Listing the program's subfolder
-(filenames + last-modified timestamp) for the Step 1.5 existence check is the
-only permitted interaction.
-
-NON-NEGOTIABLE RULES:
-- Every subroutine from SUBROUTINES must appear in Section 5 with a
-  `lines START–END` header and `*(line NNN)*` anchors on every internal
-  decision/calculation/I-O/EXSR/CALLP; every cluster feeds Section 6 (BRs).
-- Every file mention must include its library: `FILENAME (LIBRARY)`.
-- Every file in Section 3 must have a description (from ia_program_files
-  FILE_TEXT or describe_sql_object). DO NOT render a per-file fields table —
-  fields appear only inline, where the program touches them, with the
-  format `FIELDNAME (Field Description)` from ia_file_fields.
-- Every generated document must contain at least one ASCII process flow tree
-  (fenced ```text``` block with box-drawing characters) in the section
-  required by its audience template — see template-developer.md /
-  template-business.md / template-architect.md / template-operations.md.
-- Every field reference anywhere in the document must carry its description
-  in parentheses on every mention: `FIELDNAME (Field Description)`.
-- Do not assert any called program not in CALLEES section.
-- Put data areas in a separate "Data Areas Used" subsection — never in the
-  file table.
-- State which library version is being documented and **use the actual
-  library name everywhere** in the deliverable.
-- Never write "Not determinable" for parameters without running
-  ia_procedure_params first.
-- Flag any missing digits in character validators.
-- Add a call hierarchy diagram if CALL_PGM_COUNT > 0 OR CALLEES has
-  rows (bound procedures), with the actual library in the parent label.
-- HARD STOP after Step 2 if LOOKUP returns multiple versions — present table,
-  ask user which to document, wait for explicit confirmation.
-- HARD STOP if any file's library is unresolved — ask the user.
-- HARD STOP on any mid-process ambiguity — pause and ask the user.
-
-OUTPUT FILE NAMING:
-- Before naming, run Step 7.5 — Filename Resolution Gate. Do not invent a filename.
-- The only legitimate save target is the single canonical copy:
-  `docs/program-specs/{PROGRAM_NAME}/{PROGRAM_NAME}_{CanonicalDocType}.md`
-  with CanonicalDocType ∈ {Technical_Specification, Functional_Document,
-  Operations_Guide, Architecture_Review, Test_Case_Document} — no version suffix.
-- One copy per (program, doc type): overwrite this file in place ONLY after the
-  Step 1.5 regenerate confirmation. Legacy/versioned files
-  (`{PGM}_Specification.md`, `{PGM}_..._v2.md`, etc.) are left strictly in
-  place and are never matched or overwritten.
 ```
+
+The tool sequence, Rule Zero, the Verification Rules table and the Step 7.5 filename gate above apply to this prompt unchanged; they are not repeated here.
 
 ---
 

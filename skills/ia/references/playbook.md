@@ -191,7 +191,7 @@ Cross-tool chain for modernization audits. Splits programs into 4 quadrants by u
 2. **Use `ia_program_detail` for program anatomy.** It returns calls, files, subroutines, variables, overrides, and call parameters in ONE query — no need for 6 separate calls.
 3. **Don't chain redundantly.** `ia_find_object_usages` already gives you everything; don't follow up with `ia_reference_count` on the same object.
 4. **Skip intermediate steps.** Don't call `ia_member_lookup` just to get location before `ia_rpg_source_tokens` — go straight to the token analysis.
-5. **Batch your thinking.** If results show 5 SRVPGMs, don't call `ia_find_object_usages` on each one individually — ask the user which ones matter first.
+5. **Fan out in parallel.** If results show several `*SRVPGM` or STRUCTURAL `*FILE` rows, run `ia_find_object_usages` on all of them in one parallel batch — they are amplifiers, and stopping at the first hop under-reports the blast radius.
 6. **Respect the 80/20 rule.** 80% of user questions can be answered with these tools in 1 call:
    - `ia_find_object_usages` — what uses X?
    - `ia_file_field_impact_analysis` — what if I change field F?

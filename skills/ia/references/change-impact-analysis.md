@@ -85,6 +85,27 @@ The highest-risk class, because the compiler catches almost none of it.
 | KLIST / KFLD | Key resize invalidates every key list containing it, and every CHAIN/SETLL using them | `ia_klist_usage(kfld_name=…)` |
 | Truncating operations | `MOVE`/`MOVEL` into an unchanged work field, `%SUBST` at hardcoded offsets, fixed-position arrays | `ia_variable_ops`, `ia_rpg_source_search` |
 | Screen / print fit | A wider field may not fit its position or may overlap its neighbour | `ia_object_context_matrix` (DSPF/PRTF buckets) |
+| Which opcode actually touches the field | Decides CHANGE vs RECOMPILE, and the cross-reference cannot tell you | `ia_rpg_source_search(search_text=<field>, member_name=X)` |
+| Where the work field is *declared* | A 5A parameter or host variable may be declared in a copybook, not the member | `ia_rpg_source_search`, then `ia_copybook_impact` |
+
+**Never write a per-program note from `REFERENCED_OBJUSG` alone.** It is recorded
+against the *object*, so `O` means "this program has output capability on the
+file somewhere" — not that the line touching your field is a `WRITE`. A program
+whose usage reads `O` routinely turns out to `CHAIN` the file by the very key you
+are resizing. Read the opcode before you write the note: `CHAIN`/`SETLL`/`READE`
+on an **externally described** field needs only a recompile, because the field
+widens with the record format; a `WRITE` or an `EVAL` from a program-defined work
+field needs a source edit. Getting this backwards inflates the estimate and, far
+worse, tells the developer to look in the wrong place.
+
+**Trace every work field to its declaration, not just its use.** A parameter or
+SQL host variable sized to the old width is the actual defect, and it is
+frequently declared somewhere other than the member using it — a prototype in a
+copybook, or repeated across several procedure interfaces in the same member. Fix
+one occurrence and the compile fails on the prototype mismatch, or worse
+succeeds and silently keeps the old width. Count the declarations and name the
+copybook in the notes; if a copybook holds it, that copybook is its own
+artifacts row with its own `ia_copybook_impact` fan-out.
 
 Split the affected-program table by **direction**. Widening and narrowing are
 different remediation lists — widening risks truncation on the receiving side and
@@ -266,6 +287,7 @@ clean and produce wrong output — they are the reason the assessment exists.
 | Override pointing at a different physical | all | `ia_file_overrides`, `ia_override_chain` |
 | `*SRVPGM` signature invalidation | C11 | `ia_srvpgm_exports` |
 | Numeric edit/format assumptions | C1, C2 | `ia_rpg_source_search` for `%EDITC`, `%EDITW` |
+| Embedded-SQL host variable or literal still the old width | C1, C2 | the `SQLRPGLE`/`SQLRPG` rows of the artifacts table — a host variable declared at the old length truncates on FETCH, and a `WHERE`/`CAST` literal sized to the old width stops matching. Neither fails at precompile |
 
 ---
 
@@ -296,9 +318,50 @@ exactly these columns, because the script keys on them:
 | Library | Object | Type | Attribute | Impact | Lines | Notes |
 ```
 
-- **Impact** — one of `CHANGE`, `RECOMPILE`, `REBUILD`, `REVIEW`, `NONE`
+- **Impact** — one of `CHANGE`, `RECOMPILE`, `REBUILD`, `REVIEW`, `NONE`. Never
+  leave it blank: a blank cell is priced as `UNCLASSIFIED` at the review rate and
+  reported as a warning, because "nobody filled this in" is not the same claim as
+  `NONE` ("assessed, nothing to do") and must not cost zero under a label that
+  reads like a decision
 - **Lines** — from `ia_code_complexity`; blank for non-source objects
-- **Type** / **Attribute** — as returned by `ia_object_lookup` (`*PGM`, `*FILE` + `PF`/`LF`/`DSPF`/`PRTF`)
+- **Object** — always the **object** name (`OBJECT_NAME`), never the source
+  member name and never the record format. It is the key the whole
+  cross-reference is built on and the name every F-spec, `CALL` and override
+  uses, so a reader must be able to take this cell straight to `ia_*` or to
+  `DSPOBJD`. Three different names commonly collide on one file — object
+  `AIRMASTER`, source member `AIRLINETBL` in `QDDLSRC`, record format
+  `AIRMASTERR` — and only the first belongs in this column
+- **Notes** — **name the source member whenever it differs from the object
+  name**, as `member/srcfile` (e.g. `AIRLINETBL/QDDLSRC`). SQL DDL tables and
+  DDS files are routinely built from a member whose name has no resemblance to
+  the object's, so without this the developer has an `Attribute` of `PFSQL`
+  promising a source member and no way to find it. Do the same for a record
+  format that differs from the file name when the change touches the format
+- **Type** — the object type from `ia_object_lookup` (`*PGM`, `*MODULE`, `*SRVPGM`, `*FILE`)
+- **Attribute** — the **source member type** (`MEMBER_TYPE`), *not* the compiled
+  object attribute (`OBJECT_ATTR`). `ia_object_lookup` returns both columns in
+  the same row, and they diverge for anything built through the SQL
+  precompiler: an `SQLRPGLE` member compiles to a module whose `OBJECT_ATTR` is
+  plain `RPGLE`, and an SQL DDL table's member type is `PFSQL` while its
+  `OBJECT_ATTR` is `PF`. Both are true statements about different things —
+  `OBJECT_ATTR` describes the object that exists, `MEMBER_TYPE` describes the
+  source a developer opens. An estimate is about the source, so take
+  `MEMBER_TYPE` and fall back to `OBJECT_ATTR` only for objects that have no
+  source member. Getting this backwards hides every embedded-SQL program in the
+  change, which for C1/C2 is the population most at risk — see §5.
+- **Type for a `/COPY` member is `*COPYBOOK`** — it has no compiled object, and a
+  copybook's member type is frequently plain `RPGLE`, which sits in the program
+  attribute set. Type is therefore the only column that can say "source-only
+  include"; leave it as anything else and the copybook prices as a banded
+  program change instead of a copybook change
+- **A `*COPYBOOK` row is only ever `CHANGE`, `REVIEW` or `NONE`** — never
+  `RECOMPILE` or `REBUILD`. Because a `/COPY` member has no object, there is
+  nothing to rebuild: the compiler pulls its text into each consumer at that
+  consumer's compile time, so changing a copybook means recompiling the
+  programs that `/COPY` it and editing none of them. That recompile is already
+  priced on the consumer rows. A copybook marked `RECOMPILE` prices as
+  `COPYBOOK_NOT_COMPILED` at the review rate and is named in a warning, because
+  it double-counts an action the artifact cannot take
 
 ```
 python .claude/skills/ia/scripts/build_change_estimate.py REPORT.md --xlsx
@@ -329,9 +392,12 @@ Defaults are deliberately lean:
 | PF / DDS-DDL change | 0.15 h |
 | Logical file / index rebuild | 0.15 h each |
 | Display or printer file change | 1.0 h |
+| Object rebuild / level check — non-program | 0.15 h |
+| Service program rebind | 0.15 h |
 | Copybook change | 0.15 h |
 | Other object change | 0.15 h |
 | Review-only item | 0.5 h |
+| Unclassified item (blank Impact) | 0.5 h |
 | Unit test | 0.5 h per changed program |
 | System / regression test | 15% of development |
 | UAT support | 10% of development |
@@ -343,6 +409,32 @@ at 1.0 h because a layout change is real design work rather than a rebuild. The
 effort therefore sits almost entirely in the changed programs, which is where it
 belongs — and it makes the S/M/L banding, not the object count, the thing worth
 arguing about.
+
+A `RECOMPILE` row prices at the 0.15 h rebuild rate whatever the artifact is — a
+DSPF marked `RECOMPILE` costs 0.15 h, not the 1.0 h layout rate, because nothing
+about its layout moved. Pricing was never the problem here; the *label* was. Each
+artifact type therefore gets its own basis, so the Basis table names the action
+the hours actually buy:
+
+| Row is | Basis | Action bought |
+|--------|-------|---------------|
+| `*MODULE` / `*PGM` | `PGM_RECOMPILE` | recompile source |
+| `*SRVPGM` | `SRVPGM_REBIND` | `CRTSRVPGM` — a rebind, not a compile; can force revalidation of every bound program |
+| `*FILE` + `PF`/`PFSQL` | `PF_RECOMPILE` | recreate the file, level check |
+| `*FILE` + `LF`/`INDEX`/`VIEW` | `LF_REBUILD` | rebuild the access path (same basis as `REBUILD`) |
+| `*FILE` + `DSPF` / `PRTF` | `DSPF_RECOMPILE` / `PRTF_RECOMPILE` | recreate the device file |
+| anything else | `OTHER_RECOMPILE` | recreate the object |
+
+A `*COPYBOOK` is the one type absent from that table, and deliberately: there is
+no object to recreate, so no rebuild basis can be honest about it. It is caught
+before the dispatch and sent to `COPYBOOK_NOT_COMPILED` instead.
+
+Collapsing all of these onto `PGM_RECOMPILE` — as the script did until every type
+was split out — puts display files, database files and service programs in a
+bucket named after programs. The hours come out right and the reviewer still
+challenges it, because a `*FILE` row labelled `PGM_RECOMPILE` reads as a
+misclassification. Worse, it hides the one genuinely different action in the set:
+a `*SRVPGM` is never recompiled, and its rebind is the step people forget.
 
 **Quote the number, then the assumption.** A total without the rate table behind
 it invites a haggle; with it, the conversation is about the rates, which is a

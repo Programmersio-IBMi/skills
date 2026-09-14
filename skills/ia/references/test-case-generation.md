@@ -2,7 +2,7 @@
 
 Use this guide when the Step 1.5 DocType is **`Test_Case_Document`** — the user asked for "test cases", "test scripts", "UAT scripts", or a "test case document" for an IBM i program. The deliverable is a manual QA/UAT execution document built on [`templates/template-testcases.md`](templates/template-testcases.md).
 
-The workflow **reuses program-documentation.md Steps 1.5–3 and 7.5–9 unchanged** (existence check, TodoWrite kickoff, `ia_program_spec_bundle`, silent `ia_file_fields` lookup, source + BR-xxx extraction, filename gate, save, export). This reference replaces Steps 4–7 (assembly + verification) for this DocType only. No new `ia_*` tools are involved.
+The workflow **reuses program-documentation.md Steps 1.5–3 and 7.5–9 unchanged** (existence check, `ia_program_spec_bundle`, silent `ia_file_fields` lookup, source + BR-xxx extraction, filename gate, save, export). This reference replaces Steps 4–7 (assembly + verification) for this DocType only. No new `ia_*` tools are involved.
 
 **Audience calibration:** the executor is a QA/UAT tester at a 5250 session — not a developer. Steps say exactly what to type and press; expected results say exactly what to observe. No RPG jargon in steps or expected results (subroutine names belong in "Traces to", not in the instructions).
 
