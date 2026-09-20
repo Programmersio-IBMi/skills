@@ -5,6 +5,29 @@ All notable changes to this project are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] — 2026-09-20
+
+### Added
+
+- **App map pipeline is now script-only** (`references/app-map.md`, `scripts/build_app_map.py`, `templates/app-map-template.html`). The iA engine on the IBM i builds the graph and its lenses; `build_app_map.py all` fetches the engine tables over MCP (paged, with retry), validates the data and builds the viewer in one run. The model never extracts or reads the rows — it may call `ia_app_map_schemes` to show which lenses exist. Scope is one library or the whole repository; the viewer offers whatever lenses the engine built.
+- Seven tools in `references/tool-catalog.md` (now 70): `ia_repo_libraries` (repository ↔ library registry with `library_type`) and the six script-only app-map tools `ia_app_map_schemes`, `ia_app_map_nodes`, `ia_app_map_links`, `ia_app_map_clusters`, `ia_app_map_libraries`, `ia_app_map_rules`.
+- **`Synon_Functional_Document`** — a second DocType in `references/synon-documentation.md` for a business audience: a §0 DocType-selection gate, a fixed seven-section §6F structure carried by a continuous `BR-nnn` business-rule list and a process flow, and the new `references/templates/template-synon-functional.md`. A functional request against a 2E function stays in the Synon reference and never routes to `program-documentation.md`.
+- **Rule Three — Confirm Repository Coverage Before Reporting Any Negative** in `SKILL.md`: check at least two axes (object library, source/member library) before any "not found", and expect coverage to be partial by object type. The source-fencing rule is renumbered to Rule Four.
+- Disputed counts are settled against sources that can fail independently, ending with the live system — never by re-running the same call.
+- `ia_object_list` takes `created_from` / `created_to` to list what was created in a library between two dates, with a sortable date column.
+
+### Changed
+
+- Tool count 63 → 70 in `SKILL.md`, `references/index.md` and `references/tool-catalog.md`.
+- `ia_object_lookup` resolves every inventoried object, including ones with no indexed source (binding directories, journals, DDL-created tables); `SOURCE_MAPPED` says whether a source member was indexed. Source-retrieval steps now branch on source member vs compiled object.
+- Rule Two (empty means not found) applies only once Rule Three passes; the empty-result rows in the troubleshooting tables point to the coverage check first.
+- `references/synon-documentation.md`: Master Report values feed whichever DocType is being generated; the exclusion and snapshot-date rules say which DocType they apply to.
+- `references/program-documentation.md` and `references/templates/README.md` route 2E functional requests to the Synon reference.
+
+### Removed
+
+- The hand-curated app-map contract from `references/app-map.md` — the node/link vocabulary, the ≤75-node budget, the guided-tour and meta-block authoring rules and the JSON-authoring step. The engine builds the graph now.
+
 ## [1.4.0] — 2026-09-14
 
 ### Added

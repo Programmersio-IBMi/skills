@@ -4,6 +4,8 @@ Use this guide whenever a user asks for a **technical program document** for an 
 
 **Not for Synon / CA 2E functions.** If the target is a 2E function or the 2E-generated RPG behind one — the user says "Synon" / "2E" / "action diagram", an `*_AD` export is supplied, or `ia_member_lookup` resolves the name to a Synon source member — load [synon-documentation.md](synon-documentation.md) instead. Documenting generated 2E code as if it were hand-written yields a spec of the code generator, not of the business logic.
 
+**This holds for every DocType in Step 1.5, including the functional one.** A *functional* document for a 2E function is `Synon_Functional_Document` in that reference ([§0](synon-documentation.md#0-doctype-selection-run-first), [§6F](synon-documentation.md#6f-functional-document-structure)) — not `Functional_Document` here, and not `template-business.md`. The technology decides which reference; the wording then decides which DocType inside it. `template-business.md` is built around subroutines and source-line anchors, which have no counterpart in an action diagram.
+
 ---
 
 ## ⛔ Rule Zero — Never Read Existing Documentation

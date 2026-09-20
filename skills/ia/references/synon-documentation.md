@@ -1,6 +1,8 @@
 # Synon / CA 2E Program Analysis Reference
 
-Use this guide when the DocType is **`Synon_Program_Analysis`** — the target is a **CA 2E (Synon/2E) function** and the user asked for an "action diagram analysis", asked to "document this Synon function", or handed over Synon export files (`*_AD`, `*_RPG`, `*_DDS`).
+Use this guide when the target is a **CA 2E (Synon/2E) function** — the user asked for an "action diagram analysis", asked to "document this Synon function", asked for **functional documentation** of a 2E function, or handed over Synon export files (`*_AD`, `*_RPG`, `*_DDS`).
+
+Two DocTypes live here: **`Synon_Program_Analysis`** (technical — the default) and **`Synon_Functional_Document`** (business audience). Coerce the request to exactly one in [§0](#0-doctype-selection-run-first) before any other step.
 
 **Synon/2E only.** Load this reference only when at least one of these signals is present:
 
@@ -18,9 +20,32 @@ Wrong reference when:
 - The target is the **2E-generated RPG** and the action diagram cannot be reached at all → do not document the generator's output as business logic (§9, trap 1). Say the AD is unavailable and offer a generated-code spec via [program-documentation.md](program-documentation.md) instead.
 - The ask is change impact, version comparison or a context matrix — those DocTypes are technology-agnostic and keep their own references even for 2E objects.
 
-The deliverable is **one** comprehensive Markdown document centred on the **Action Diagram**, serving developers, business/Synon analysts, stakeholders and testers from the same text. Save to `docs/synon-specs/{FUNCTION}/{FUNCTION}_Program_Analysis.md`.
+**A functional request is not a reason to leave.** "Functional doc", "business doc" or "for business analysts" against a 2E function is `Synon_Functional_Document` **in this reference** (§0, §6F) — not `Functional_Document` in [program-documentation.md](program-documentation.md), which excludes 2E functions for every DocType it carries. The technology decides the reference; the wording decides which DocType inside it.
 
-The structure in [§6](#6-output-structure) is **fixed**: exact headings, exact table columns, exact order. Nothing added, nothing dropped, nothing renamed. Two sections carry the document — **§2.4 Screen Field Mapping** and **§2.5 Processing and Validations** — and §2.5 gets the largest share of the effort.
+Both DocTypes are centred on the **Action Diagram** and save under `docs/synon-specs/{FUNCTION}/`. `Synon_Program_Analysis` is **one** comprehensive document serving developers, business/Synon analysts, stakeholders and testers from the same text — `{FUNCTION}_Program_Analysis.md`. `Synon_Functional_Document` is a shorter business-audience document with its own structure — `{FUNCTION}_Functional_Document.md`.
+
+For `Synon_Program_Analysis` the structure in [§6](#6-output-structure) is **fixed**: exact headings, exact table columns, exact order. Nothing added, nothing dropped, nothing renamed. Two sections carry the document — **§2.4 Screen Field Mapping** and **§2.5 Processing and Validations** — and §2.5 gets the largest share of the effort. For `Synon_Functional_Document` the structure in [§6F](#6f-functional-document-structure) is fixed the same way, and **§2 Business Rules** carries it.
+
+---
+
+## 0. DocType selection (run first)
+
+This reference carries **two** DocTypes for a 2E function. Coerce the request to exactly one before any other step — the choice decides the structure (§6 + §7 vs §6F), the verification gate (§8) and the filename (§10).
+
+| User wording (examples) | DocType | Structure | Output file |
+|---|---|---|---|
+| "program analysis", "action diagram analysis", "document this Synon function", "AS400 program analysis document", "technical spec", **default** | `Synon_Program_Analysis` | §6 + §7 | `{FUNCTION}_Program_Analysis.md` |
+| "functional doc", "functional documentation", "business doc", "BA doc", "non-technical", "for business analysts", "for stakeholders" | `Synon_Functional_Document` | §6F | `{FUNCTION}_Functional_Document.md` |
+
+Rules:
+
+- **"Functional" is never a modifier on the technical document.** A functional request produces the §6F structure — not §6 with softer wording, not §6 with sections dropped, not §6 with a business summary bolted on top. Answering a functional request with the §6 document is the single defect this gate exists to prevent, and it is invisible in the output: the document looks complete and correct, it is simply the wrong deliverable.
+- **The default is `Synon_Program_Analysis`.** Silence, or any wording that does not signal a business audience, takes the technical DocType. §6 stays the default for the same reason it always was — it is what "document this function" means to the people who ask most often.
+- **State which one you chose** in one line before the first tool call, so a mis-read costs a correction rather than a whole document.
+- **Genuinely ambiguous → ask.** "Documentation for function X" with a non-technical audience named anywhere in the request is functional. With nothing pointing either way it is technical, and you say so rather than asking.
+- **Both requested** ("technical and functional", "both docs") → run the workflow once per DocType and produce two files. §§1–5 are shared — the same inputs, ground rules, Master Report and AD read serve both, so the second document costs assembly effort, not a second analysis.
+
+§§1–5 and §§8–11 apply to both DocTypes. §6 + §7 are the technical structure; §6F is the functional one.
 
 ---
 
@@ -54,12 +79,12 @@ Mixed inputs are normal (an attached `_AD` plus repository lookups for callers, 
 4. **No invented logic.** Every validation, error message and calculation must trace to a line in the supplied source.
 5. **Exclusions.**
    - `Y2`-prefixed objects are 2E-generated system objects — never list them in §5.
-   - Function and command keys belong **only** in §2.7, never in §2.5.
-   - Screen field validations belong **only** in §2.4, never repeated in §2.5.
+   - **`Synon_Program_Analysis` only:** function and command keys belong **only** in §2.7, never in §2.5. In a `Synon_Functional_Document` there is no §2.7 — a key name appears inside the BR-xxx rule whose business meaning depends on it, and there is no key inventory table (§6F exclusions).
+   - **`Synon_Program_Analysis` only:** screen field validations belong **only** in §2.4, never repeated in §2.5. In a `Synon_Functional_Document` there is no §2.4 — the validations that matter to the business become BR-xxx bullets in §2 (§6F exclusions).
    - Header/footer screen furniture (program title, company name, date/time, key legend) is excluded from §2.4.
    - COBOL is out of scope repository-wide.
 6. **Naming convention inside the document.** Name a file as *description* + implementation name — `Order Header TRG - OPBFCPP` — and a called function as *object* + its 2E text — `PDW3XFR - CLC Total Load Miles XF`. Use the object's real 2E text, not a paraphrase.
-7. **Repository snapshot.** In mode B the source is a build snapshot. Take the collection date from `ia_repo_config` and state it under the document's branding line; if the user needs live source, say the snapshot date and offer a live re-read.
+7. **Repository snapshot.** In mode B the source is a build snapshot. Take the collection date from `ia_repo_config` and state it in the document's header block — under the branding line in a `Synon_Program_Analysis`, on the `**Date:**` line in a `Synon_Functional_Document` (`**Date:** {today} (repository snapshot: {snapshot})`). If the user needs live source, say the snapshot date and offer a live re-read.
 8. **Branding.** `Author: iA by programmers.io` (see SKILL.md → Response Branding).
 9. **No tool names in the document.** The deliverable never names the tooling that produced it — no `ia_*` / `ia-*` tool name, no ad-hoc SQL, no MCP or server wording, no iA repository table name, no parameter name from a tool call. Write what the analysis found, not how it was found: "Programs that call this function", never "`ia_call_hierarchy` returned". Client file, field, program and function names are of course in scope — it is the *tooling* that stays out. Provenance and coverage caveats belong in your chat reply; the §2 rule 8 branding line is the document's only reference to iA.
 10. **RPG detail only where it explains the AD.** The generated RPG is read to *resolve* AD references — which physical file and access path a read hits, which program a call lands on, a field's declared type and length — and those resolved facts belong in the document. Its implementation mechanics do not: no opcodes (`CHAIN`, `SETLL`, `READE`, `WRITE`, `MOVE`, `EVAL`), no indicators, no generated subroutine or variable names, no F-spec/D-spec declarations, no RPG cycle or generated control flow. Test each RPG fact before writing it: *does a reader need this to understand the action diagram?* If not, cut it. "Reads **"Load Detail - `OMFLCPP`"** by Load ID in stop sequence" is the AD's rule; "performs a `CHAIN` to `OMFLCPP` setting `*IN71`" is generator plumbing.
@@ -77,7 +102,7 @@ A **Master Report** is a previously generated analysis document for the same fun
 | **Generate only gaps** | New analysis fills only what the Master Report does not cover |
 | **Never overwrite** | Do not re-derive, rephrase or "improve" a corrected value |
 | **Prefer the Master Report** | On any conflict between it and your file analysis, the Master Report wins — note the conflict in your chat reply, not in the document |
-| **Same structure** | Master Report values are injected into the §6 structure; the structure never bends to the old document's layout |
+| **Same structure** | Master Report values are injected into the §6 / §6F structure of the DocType you are generating; the structure never bends to the old document's layout. A Master Report written against §6 still supplies values to a §6F document — its business function, file purposes, messages and callee descriptions carry across; its §2.4 and §2.5 tables have no §6F home and are read for the rules they contain, not copied |
 
 This is a deliberate exception to the program-documentation Rule Zero ("never read existing documentation"): the user has explicitly opted in by supplying the report. It applies **only** to a Master Report the user supplied — not to other documents you happen to find under `docs/`.
 
@@ -92,14 +117,14 @@ Two Master Report specifics:
 
 | Step | Action | Tools |
 |------|--------|-------|
-| 0 | Identify the main `_AD`, its dependents and any Master Report (§1). Confirm the function name and library with the user if ambiguous | — |
-| 1 | **Existing-output gate.** List `docs/synon-specs/{FUNCTION}/`; if a document exists, surface it with its date and ask before regenerating | filesystem listing only |
+| 0 | **Choose the DocType (§0)** and say which one. Then identify the main `_AD`, its dependents and any Master Report (§1). Confirm the function name and library with the user if ambiguous | — |
+| 1 | **Existing-output gate.** List `docs/synon-specs/{FUNCTION}/`; if the **chosen DocType's** file (§10) exists, surface it with its date and ask before regenerating. The *other* DocType's file existing is not a reason to stop — the two are separate deliverables and each has exactly one canonical copy | filesystem listing only |
 | 2 | **Resolve the function and gate on it** (mode B): `ia_synon_functions` must return a row — it yields the `pgm_surrogate_id` every other Synon tool needs, the 2E `function_type` (→ §1 Program Type) and the generated AD member names. No hit, and `ia_member_lookup` shows an RPG/CL member with no 2E design behind it → wrong DocType, stop and switch to [program-documentation.md](program-documentation.md). Capture the repository build date | `ia_synon_functions`, `ia_member_lookup`, `ia_object_lookup`, `ia_repo_config` |
 | 3 | **Read the action diagram in full** — parsed statements and their operands first, then the verbatim AD text, the generated RPG and the DDS. Paginate every read to the end | `ia_synon_action_diagram`, `ia_synon_variable_ops`, `ia_synon_source`, `ia_rpg_source`, `ia_code_complexity`, `ia_dds_source` |
 | 4 | **Structural inventory** — files, callers, callees, parameters, subroutines, field metadata | `ia_program_spec_bundle`, `ia_program_files`, `ia_object_context_matrix`, `ia_call_hierarchy` (both directions), `ia_file_fields`, `ia_file_dependencies`, `ia_cl_jobs` |
-| 5 | **Assemble** the document against §6, spending the effort budget on §2.4 and §2.5 | — |
+| 5 | **Assemble** the document against §6 + §7 (`Synon_Program_Analysis`, effort budget on §2.4 and §2.5) or against §6F (`Synon_Functional_Document`, effort budget on §2 Business Rules and §4 Process Flow) | — |
 | 6 | **Verify** against the §8 gate before showing anything | — |
-| 7 | **Save** to `docs/synon-specs/{FUNCTION}/`, then export on request | `scripts/convert_md_to_docx.py`, `scripts/convert_md_to_pdf.py` |
+| 7 | **Save** to `docs/synon-specs/{FUNCTION}/` under the DocType's filename (§10), then export on request | `scripts/convert_md_to_docx.py`, `scripts/convert_md_to_pdf.py` |
 
 ### Step 3 — reading the sources
 
@@ -151,7 +176,7 @@ User-programmable points (labelled `USER:` in the AD — initialise, validate, l
 
 ## 6. Output structure
 
-The **only** valid structure. Reproduce these headings verbatim and in this order. Formatting rules: main headers `### **Title**`, sub-headers `#### **Title**`, bullets with `-` indented two spaces under their header, GitHub-style tables never wrapped in code fences, paragraphs left-aligned directly under their heading.
+The **only** valid structure for `Synon_Program_Analysis`. For `Synon_Functional_Document` use [§6F](#6f-functional-document-structure) instead — a different structure, not a subset of this one. Reproduce these headings verbatim and in this order. Formatting rules: main headers `### **Title**`, sub-headers `#### **Title**`, bullets with `-` indented two spaces under their header, GitHub-style tables never wrapped in code fences, paragraphs left-aligned directly under their heading.
 
 | # | Heading | Content rules |
 |---|---------|---------------|
@@ -190,6 +215,63 @@ Table, exactly these columns in this order:
 - **Load From File or Field** — the exact source: a file name, `PROGRAM_CALCULATION`, `USER_INPUT`, or a reference to the initialisation logic described in §2.5.
 - **Comments & Validations** — the **only** column for field-level validations (`Numeric only`, `Must be valid state code`, `Range check 1-99`, `F4 prompt available`). Every validation performed on that field goes here, and nowhere else in the document.
 - Exclude header/footer furniture: program title, company name, date/time display, function-key legend, command keys.
+
+---
+
+## 6F. Functional Document structure
+
+The **only** valid structure for `Synon_Functional_Document`. It mirrors the seven numbered sections the RPG/CL flow's `Functional_Document` DocType uses, so a functional document reads the same to a business analyst whether the program behind it is hand-written RPG or a 2E function — same section names, same order, only the sourcing differs, because here every rule comes from the action diagram rather than from subroutines. [templates/template-synon-functional.md](templates/template-synon-functional.md) is the fill-in copy.
+
+Formatting: `## N. Title` for the seven sections, `### Title` for sub-headers, tables GitHub-style and never wrapped in code fences.
+
+**Read the template before writing.** It is the structure of record: the seven headings and their order, every table's columns, and the fixed text of the metadata block and the quality footer. Copy it and fill it in — do not reconstruct the structure from memory.
+
+The rules below are the ones the template cannot show on its own; everything else about the shape is in the template.
+
+- **Title** — the same shape as §6, so the two documents read as a family. Implementation name blank (the internal function types — §4, step 3 item 1) → the design name alone, with no dash and no substitute text.
+- **Metadata** — in mode B the repository snapshot date goes on the Date line (§2 rule 7).
+- **§1** — derive the marked **Program Type** box from the 2E `function_type` and whether the function drives a display file. **Key Capabilities** is 3–6 bullets, each a thing a user can accomplish.
+- **§3** — name files per §2 rule 6, and state each Purpose as what the file holds *for this function*. **Key Data Elements** carries only the fields the §2 rules turn on.
+- **§4** — the arrow flow is 5–12 steps. Follow the AD's execution order but at business granularity: one step per user point or option, not one per statement. **Detailed Steps** carries one entry per arrow-flow step, in the same order, and both lines of every entry run to **at least two sentences**: *What happens* states what the step does plus the data it touches and the condition that governs it; *Business impact* states why it matters to the business plus what goes wrong for the user or the downstream process when it fails or is skipped. A single-clause line ("Validates the carrier code.") is a defect — the flow diagram already says that much, and the prose is the part a business reader acts on.
+- **§5** — each purpose is what the callee does *for this function*, as in §5.2 of the technical structure.
+- **§6** — `Not Available` if the AD sends no messages.
+- **§7** — all four metric rows always present. For the internal function types 2E compiles inline (§4, step 3 item 1) there is no standalone generated program, so Size and Complexity are `Not Available` and the What This Means cell says why; never fall back to the calling function's line count.
+
+### §2 Business Rules — the critical section
+
+Where the functional document earns its keep, and the one section carrying the same analytical weight §2.5 carries in the technical document. What differs is the output *form*: §2.5 is a line-by-line trace, §2 is a numbered list of rules. The AD read behind them is identical — same full pagination, same recursive expansion of internal functions — because you cannot state a rule you have not traced. Only the traversal stays off the page.
+
+Four `###` sub-headers in this order, each holding `- **BR-nnn** — {rule in plain language}` bullets. Numbering runs continuously from BR-001 across all four groups, never restarting per group.
+
+| Sub-header | Holds |
+|------------|-------|
+| `### Validation Rules` | Every condition that can reject input or block an action, and what happens when it fails |
+| `### Calculation Rules` | Every derived value — what is computed, from which inputs, under which conditions |
+| `### Workflow Rules` | Sequencing, status transitions, approvals, what may follow what |
+| `### Data Rules` | What is created, updated or deleted, and the condition that triggers it |
+
+Mandates:
+
+1. **One rule per bullet, in business language.** A rule a business analyst can confirm or dispute without knowing 2E. No file-access mechanics, no 2E context codes, no statement sequence numbers, no function-type names.
+2. **Every rule traces to the AD.** The same evidentiary standard as §2.5 (§2 rules 1 and 4). A plausible business rule you cannot point at in the source is a defect, not a bonus — and it is more tempting here, because plain language hides the gap a line-by-line trace would expose.
+3. **Anchor in words, not line numbers.** Cite the AD block a rule comes from in terms the reader shares — the user point, the option, the named internal function ("on Option 6, Lock Load"). Statement sequences and `line_sequence` values are provenance for your chat reply, not content for a business document.
+4. **Quote message text exactly** where a rule sends one, then explain it. The literal text is what the user sees on screen, which makes it the most checkable thing in the document.
+5. **Expand internal functions, then flatten.** Recurse as §7 mandate 6 requires, because most 2E validation lives one or two levels down. Their rules join the numbered list at the level the *business* sees them, not nested under the call. Recursion is how you find rules, not how you present them.
+6. **Groups are for reading, not accounting.** A rule that could sit in two groups goes once, in the one a reader would look in first. Omit a group the AD has nothing for — an empty `### Calculation Rules` header is noise.
+7. **Forbidden phrases carry over** from §7 mandate 4: "comprehensive checks", "standard validations", "performs validations", "updates the file", or any equivalent standing in for a rule instead of stating it. Condensing the *trace* is the point of this DocType; condensing the *rule* defeats it.
+
+### Excluded from the functional document
+
+| Excluded | Why, and where it lives instead |
+|----------|---------------------------------|
+| §2.4-style screen field mapping table | A six-column DDS field inventory is technical reference, not business content. Field validations that matter to the business become BR-xxx bullets in §2; the table belongs to §6 |
+| Parameter table with types, lengths and I/O/B mode | Interface detail. Where a parameter *drives* behaviour, that behaviour is a rule in §2 |
+| Line-by-line §2.5 execution trace | Replaced by §2 (the rules) and §4 (the flow). Never include both forms |
+| §2.2 Access Check, §2.3 Record Selection Criteria, §2.6 Subfile Options, §2.7 Function Keys as sections | Access rules, selection criteria and what an option or key *does* become BR-xxx bullets or §4 steps. A key name (F4, F21) may appear inside a rule whose business meaning depends on it; there is no key or option inventory table |
+| RPG implementation mechanics | Already excluded document-wide by §2 rule 10 — doubly out of place in front of this audience |
+| Tool names, parameter names, iA table names, SQL | §2 rule 9, identically for both DocTypes |
+
+Nothing is added either: seven sections in order, plus the header block and the quality footer.
 
 ---
 
@@ -252,6 +334,10 @@ This is the *shape* — depth, ordering, quoting, recursive expansion — not a 
 
 ## 8. Verification gate (run before showing the document)
 
+The first table is the `Synon_Program_Analysis` gate. For `Synon_Functional_Document` run the §6F gate below it instead. The shared checks are written out in both tables rather than cross-referenced, so neither list has to be read against the other.
+
+### `Synon_Program_Analysis` gate
+
 | Check | Fail action |
 |-------|-------------|
 | Every §6 heading present, verbatim, in order; none added or removed | Fix the structure before anything else |
@@ -274,10 +360,37 @@ This is the *shape* — depth, ordering, quoting, recursive expansion — not a 
 
 ---
 
+### `Synon_Functional_Document` gate (§6F)
+
+| Check | Fail action |
+|-------|-------------|
+| **The DocType generated is the one asked for (§0)** | Regenerate against the other structure. Never patch a §6 document into a §6F one — the sections do not correspond |
+| All seven §6F sections present as `## N. Title`, verbatim and in order, plus the header block and the `## Documentation Quality` footer; none added, none renamed | Fix the structure before anything else |
+| Level-1 title is `{FUNCTION} - {IMPLEMENTATION_NAME}` (design name alone when there is no implementation name) | Restore the fixed title shape |
+| No `ia_*` tool name, SQL, MCP/server wording or iA repository table name anywhere in the document | Rewrite the sentence in domain terms — provenance goes in the chat reply, not the deliverable |
+| §1 purpose carries no 2E vocabulary and no file, field or program names | Rewrite as user-facing outcomes; the names belong in §3 and §5 |
+| Every `BR-nnn` cites a named AD block, and none rests on a forbidden summary phrase | Re-trace the block and state the rule, or delete it |
+| BR numbering runs continuously from BR-001 across all four groups | Renumber |
+| §3 lists physical files only — no logical files, no `F`-prefixed names | Resolve every LF to its PF |
+| §4 carries all three parts, and the Business Process Flow Tree is present in a `text` fence with no Mermaid anywhere | Add the missing part; convert any diagram to an ASCII tree |
+| Every Detailed Steps entry has both lines, each at least two sentences, and there is one entry per arrow-flow step | Expand the thin line with the data it touches, its governing condition, and the consequence of failure — re-read the AD block rather than padding |
+| §5 has both sub-sections (even when empty), no `Y2*` rows, and purposes stated in business terms | Rewrite the purposes |
+| Every message text in §6 is quoted from source, not paraphrased | Quote it, or mark the row `Not Available` |
+| §7 carries all four metric rows. For an inline-compiled function type there is no generated program, so Size and Complexity are `Not Available` with the reason in the What This Means cell | Restore the row with `Not Available` — never drop a metric row, and never substitute the caller's line count |
+| **No excluded content included** — no screen field mapping table, no parameter type/length table, no line-by-line execution trace, no key or option inventory, no RPG mechanics | Delete it; the §6F exclusion list is exhaustive |
+| **Mode B only** — the AD was paged to the end, and internal functions were expanded recursively, *before* the rules were written | Page again from the last `offset`; a rule list built on a partial read is missing rules it cannot know about |
+| **Mode B only** — every `variable_usage=OUT` **and** `variable_usage=BOTH` field is accounted for by a Data Rule in §2 | Add the rule; an `OUT` or `BOTH` operand is a write the document is claiming does not happen. If the operand table returned nothing for this function, this check is inconclusive — derive the writes from `raw_text` and say so |
+| Every Master Report value preserved unchanged | Restore from the Master Report |
+| No unsupported claim anywhere; unknowns are `Not Available` | Delete the claim |
+
+---
+
 ## 9. Traps
 
 | Trap | Why it bites |
 |------|--------------|
+| Answering a functional request with the §6 technical document | The likeliest failure mode of this reference and the hardest to spot: the document is complete, accurate and the wrong deliverable. §0 exists for this one trap |
+| Producing §6 with its technical sections deleted and calling it functional | A trimmed technical document is not a functional one. It still opens on interface detail, and it still lacks the BR-xxx rule list and the process flow the audience came for. §6F |
 | Documenting the generated RPG instead of the AD | Produces a spec of 2E's code generator, not of the business logic. The AD is the spine |
 | Carrying RPG mechanics across — `CHAIN`/`SETLL` calls, indicators, generated subroutine names | Noise to every audience of this document, and it describes the generator's choices rather than the design's intent. §2 rule 10 |
 | Summarising a deep conditional block | The reader loses the exact rule they came for. §2.5 is judged on depth |
@@ -295,21 +408,31 @@ This is the *shape* — depth, ordering, quoting, recursive expansion — not a 
 
 ## 10. Save and export
 
-1. Save the Markdown to `docs/synon-specs/{FUNCTION}/{FUNCTION}_Program_Analysis.md`.
-2. On request, convert with the bundled scripts (never ad-hoc conversion code):
+1. Save the Markdown under `docs/synon-specs/{FUNCTION}/`, one canonical copy per DocType:
+
+   | DocType | File |
+   |---------|------|
+   | `Synon_Program_Analysis` | `{FUNCTION}_Program_Analysis.md` |
+   | `Synon_Functional_Document` | `{FUNCTION}_Functional_Document.md` |
+
+   The two coexist. Generating one never touches the other, and neither filename carries a version suffix.
+
+2. On request, convert with the bundled scripts (never ad-hoc conversion code) — `{DOCUMENT}` is the filename from step 1:
 
 ```bash
-python .claude/skills/ia/scripts/convert_md_to_docx.py docs/synon-specs/{FUNCTION}/{FUNCTION}_Program_Analysis.md
-python .claude/skills/ia/scripts/convert_md_to_pdf.py  docs/synon-specs/{FUNCTION}/{FUNCTION}_Program_Analysis.md
+python .claude/skills/ia/scripts/convert_md_to_docx.py docs/synon-specs/{FUNCTION}/{DOCUMENT}.md
+python .claude/skills/ia/scripts/convert_md_to_pdf.py  docs/synon-specs/{FUNCTION}/{DOCUMENT}.md
 ```
 
 3. Markdown is the source of truth — regenerate the `.docx`/`.pdf` after any edit rather than editing them directly. Tables must stay out of code fences so they survive the Word conversion.
 
 ---
 
-## 11. Tools this DocType uses
+## 11. Tools these DocTypes use
 
-Everything referenced above, in call order. The four Synon-specific tools are the spine; the rest are the standard iA tools this document borrows for its header and relationship sections.
+Everything referenced above, in call order. The four Synon-specific tools are the spine; the rest are the standard iA tools these documents borrow for their header and relationship sections.
+
+**Both DocTypes call the same tools.** `Synon_Functional_Document` is a different rendering of the same analysis, not a cheaper one — the AD still has to be read to the end and internal functions still have to be expanded recursively, because a rule list built on a partial trace is silently short. The only reads it can skip are the ones that feed sections it does not have: `ia_dds_source` is still needed for the menu path but no longer for a field-by-field §2.4 walk, and `ia_file_fields` narrows to the fields the §2 rules turn on.
 
 | Tool | Called for | Feeds |
 |------|-----------|-------|

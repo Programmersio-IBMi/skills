@@ -89,7 +89,7 @@ Per program, from its context matrix rows:
 
 Rules:
 
-- **Logical files stay visible.** List the LF by its own name and annotate the base PF in the "Over" column. The reader opening the source will see the LF in the F-specs; collapsing it to the PF (which [app-map.md](app-map.md) does deliberately, because a graph node per LF is noise) makes the document disagree with the code.
+- **Logical files stay visible.** List the LF by its own name and annotate the base PF in the "Over" column. The reader opening the source will see the LF in the F-specs; collapsing it to the PF (which the [app map](app-map.md) does deliberately, because a graph node per LF is noise) makes the document disagree with the code.
 - **`C` on a display file means Combined** — read and written — not "create". Never render it as Create.
 - **The same file can appear twice** with different `DETECTED_FROM` (`O` = from the compiled object, `S` = from source). Merge them into one row and union the access modes; note the union, e.g. `Input Update`.
 - **Files in `QTEMP` and `#`-suffixed duplicates are runtime work files**, not repository objects — they surface as unenriched rows (blank attribute/description). Don't table them as data files; explain them in the program's role sentence instead (see the override pattern in §7).

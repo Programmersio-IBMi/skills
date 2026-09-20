@@ -1,4 +1,4 @@
-# iA Tool Catalog (63 Tools)
+# iA Tool Catalog (70 Tools)
 
 **Rule:** Prefer the dedicated `ia_*` tools.
 
@@ -7,9 +7,9 @@
 | Tool | Purpose |
 |------|---------|
 | `ia_library_files` | List every file/table in any IBM i library |
-| `ia_object_lookup` | Resolve object name → type, library, attribute (supports `%` wildcards). Covers **compiled objects** only; if empty, try `ia_member_lookup` for source-only members |
+| `ia_object_lookup` | Resolve object name → type, library, attribute (supports `%` wildcards). Reads the full object inventory — every object, including ones with no source such as binding directories and journals; `SOURCE_MAPPED` says whether iA indexed a source member for it, and the member columns are null when it did not. For a source-only member use `ia_member_lookup` |
 | `ia_member_lookup` | Source member metadata: existence, file/library/type, timestamps, line counts. Pass the bare name for an exact match (names shorter than 10 chars now resolve); add `%` only for prefix/substring search |
-| `ia_object_list` | Inventory objects by type (`*PGM`, `*SRVPGM`, `*FILE`, ...); optional library filter. List **all display files** with `object_type=*FILE, object_attribute=DSPF` (no `*DSPF` type exists). For physical files, `pf_kind` labels each row Data PF / Source PF; filter `object_attribute=PF-DATA` or `PF-SRC` for one kind |
+| `ia_object_list` | Inventory objects by type (`*PGM`, `*SRVPGM`, `*FILE`, ...); optional library filter. List **all display files** with `object_type=*FILE, object_attribute=DSPF` (no `*DSPF` type exists). For physical files, `pf_kind` labels each row Data PF / Source PF; filter `object_attribute=PF-DATA` or `PF-SRC` for one kind. Date window via `created_from`/`created_to` (`YYYY-MM-DD`, inclusive); `creation_date_iso` is the sortable form of the raw MMDDYY `creation_date` |
 | `ia_program_summary` | Program overview: metadata, compile info, module type, complexity metrics |
 | `ia_program_spec_bundle` | **One-call spec inventory** — LOOKUP/COMPLEXITY/FILES/CALLS/PARAMS/BINDINGS (replaces 7 calls) |
 | `ia_program_detail` | Deep structural analysis with section filtering: CALLS, FILES, SUBROUTINES, VARIABLES, OVERRIDES, CALL_PARAMS |
@@ -103,4 +103,20 @@
 | `ia_build_job_history` | Run log of every metadata build/refresh iA submitted, **across every repository**, not just the one being analyzed. Repo, INIT/REFRESH, real IBM i job, submitter, triggering program, submit + end timestamp, `run_minutes`. Filter by repo/mode/status/user/`called_from`/`days_back`. `job_status=P` or `S` finds builds that never finished. `status_text` is an **inferred** decode of `C`/`P`/`S` — trust the raw code when it matters |
 | `ia_build_job_summary` | Per-repository roll-up of the same log — total builds, INIT vs REFRESH, completed/in-progress/submitted, last build, last completion, last attempt's mode + status, avg and max duration. **Run this before trusting any analysis**: iA tables are a build snapshot. Read `last_status_text` first; the timestamps are on different clocks (`last_build_ts` = submitted, `last_completed_ts` = ended), so only `last_completed_ts` *earlier* than `last_build_ts` means the newest build never finished |
 | `ia_scheduled_refresh` | iA's standing schedule — which repositories rebuild/refresh automatically, under which IBM i scheduler entry, frequency, owner, plus last run + outcome. The **only** source that maps a scheduler job name back to the repository and purpose it serves. `process_date`/`process_time` are CHAR — they hold `*MONTHEND`/`*CURRENT` as well as real values |
+| `ia_repo_libraries` | The repository ↔ library registry — which libraries a repo covers, which repo covers a library, in scan order, with `library_type` (`S` source-only, `O` object-only, `S/O` both; `M` and blank also occur), metadata build status and collector version. **Zero rows for a library means that repository never scanned it**, not that the object is missing; a library typed `S` holds source only, so an object lookup there returns nothing by design. Registry scope: a repository schema no longer registered will not appear, so one hit means one *registered* repo, not one schema on the box |
 | `ia_job_schedule_entries` | The application's batch schedule captured from the IBM i job scheduler at build time. OS status SCHEDULED/HELD/SAVED, frequency, days, next submission date, job queue, command, job description. **Excludes IBM `Q*` system entries.** Appended per build — `snapshot_scope` defaults to `*LATEST` (one row per job); `*ALL` shows drift. Only exists in repos built by a newer collector — SQL0204 means the repo predates the table, not that nothing is scheduled |
+
+## App Map — script-only, do not call these to read rows
+
+The app-map tools feed `scripts/build_app_map.py`. **Never call them to pull rows into
+your context** - a single map is tens of thousands of rows. Run the script and read the
+counts it prints. See [app-map.md](app-map.md).
+
+| Tool | Purpose |
+|------|---------|
+| `ia_app_map_schemes` | The lenses the engine built per library, with cluster count and coverage. **The one app-map tool you may call yourself** - a handful of rows, useful to show the user what exists before building a map |
+| `ia_app_map_nodes` | Every mapped object with its kind, layer, activity and fan-in/fan-out. Paged (`offset`/`limit`). **Script only** |
+| `ia_app_map_links` | Every relationship between mapped objects, with the target library when the engine resolved it. Paged. **Script only** |
+| `ia_app_map_clusters` | Which objects belong to which cluster, per lens. The largest table - a 10 000-object library has ~50 000 rows. Paged. **Script only** |
+| `ia_app_map_libraries` | Library name, sequence and description for the mapped libraries. Paged. **Script only** |
+| `ia_app_map_rules` | The human-authored business-area seed rows. Optional - a map is still valid without them. Paged. **Script only** |
