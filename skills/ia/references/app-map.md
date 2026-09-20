@@ -1,143 +1,165 @@
-# 3D Application Map Generation
+# 3D Application Map
 
-Use this when a user asks for an **application map** of a library or application area ("app map of CASELIB", "3D map of the order area", "bird's-eye view of the application", "show me the whole application"). The deliverable is **two files**:
+Use this when someone asks for an **application map** — "app map of CASELIB", "3D map of the order area", "show me the whole application", "bird's-eye view".
+
+## What it is
+
+An app map is a 3D picture of a library (or of every library in the repository). Every object is a node. Every relationship is a link. You fly through it in a browser.
+
+A **lens** is one way of grouping the objects — by business area, by layer, by activity, by menu, and so on. The iA engine builds the lenses on the IBM i and stores them. The map shows one lens at a time. Nothing about the lenses is hardcoded in the viewer: the map offers whatever lenses the engine built.
+
+The deliverable is two files:
 
 ```
-docs/app-maps/{SCOPE}/{SCOPE}_AppMap_Data.json   ← you write this (single source of truth)
-docs/app-maps/{SCOPE}/{SCOPE}_AppMap.html        ← built BY SCRIPT from the JSON
+docs/app-maps/{REPO}/{REPO}_AppMap_Data.json   the graph data
+docs/app-maps/{REPO}/{REPO}_AppMap.html        the viewer, built from that data
 ```
 
-`{SCOPE}` = the library name (`CASELIB`) or `{LIBRARY}_{AREA}` (`CASELIB_ORDERS`).
+`{REPO}` = the iA repository name. The script fills it in for you.
 
-> **You only ever author the JSON.** The HTML is produced by `python scripts/build_app_map.py <json>` (path relative to this skill's folder), which validates the JSON and injects it into `templates/app-map-template.html`. **Never write or edit the HTML by hand, never touch the template.** The node/link vocabularies below are closed — never invent a new kind.
+## The pipeline
 
----
+```
+engine on IBM i  ->  ia_app_map_* tools  ->  build_app_map.py  ->  {REPO}_AppMap.html
+```
 
-## 1. Resolve the scope
+## THE RULE
 
-- **Whole library** → `ia_object_list(library=L)` is the inventory.
-- **Application area** → `ia_application_area(area_name=A)` lists the area's objects. If the user's area name doesn't match, run `ia_application_area(area_name='*LIST')` and ask the user to pick — never substitute (Rule Two).
-- Record `repository` from `ia_repo_config` (repository/library configuration) for the meta block.
+> **You never extract the rows. You never read the rows.**
+> You run the script, you read the counts it prints, and you open the HTML.
 
-## 2. Inventory and budget — target ≤ 75 in-scope nodes
+The engine already did the analysis. The script moves the result from the server to the file. A map of a mid-size library is tens of thousands of rows. Pulling those through your context costs a fortune and adds nothing — the script is the ETL, not you.
 
-Run once: `ia_code_complexity(library=L, limit=5000)` — this gives every member's total/executable lines and IF/SQL/subroutine/procedure counts. You'll use it for ranking AND for node stats.
+You may call `ia_app_map_schemes` yourself, to show the user which lenses exist. That is a handful of rows. Everything else is script work.
 
-**Fill the map in this order and STOP adding when you reach 75 in-scope nodes:**
+## Workflow
 
-1. Every `*MENU` (if more than 5, keep the 5 that launch the most programs).
-2. Every program a kept menu launches — `ia_call_hierarchy(program_name=MENU, direction='CALLEES')`.
-3. Remaining `*PGM`s ranked by **executable lines (descending)** from the complexity call, until programs total ~40.
-4. Data physical files used by ≥2 kept programs, then by 1 (most-shared first) — from step 3 of the link rules below. **Data PFs only** (`object_attribute='PF-DATA'`); never map source physical files (QRPGLESRC, QCLSRC, …).
-5. Display files (DSPF) and printer files (PRTF) used by kept programs.
-6. Up to **5** uncompiled source members ≥ 500 lines (`ia_uncompiled_sources`, keep only rows in the scoped library) — these are the modernization-candidate "floating giants".
-7. Up to **10** EXT nodes (out-of-scope programs called by kept programs — see link rules).
+### 1. Ask for the scope
 
-`meta.scope.totalObjects` = the full inventory count before trimming; `meta.scope.mappedObjects` = **exactly the number of non-EXT nodes in your file** (the builder fails on any mismatch). The viewer shows "X of Y objects mapped" automatically when they differ.
+One library, or the whole repository? Default is the whole repository (`*ALL`). If the user names a library, pass it.
 
-## 3. Nodes — classification is mechanical
+Do not guess a library name. If the user is vague, run `ia_app_map_schemes(library='*ALL')` and show them the libraries and lenses that exist.
 
-| Object | `kind` | `attr` |
-|--------|--------|--------|
-| `*MENU` | `MENU` | MNUDDS |
-| `*PGM` attribute RPGLE / SQLRPGLE / RPG / SQLRPG | `PGM_RPG` | the attribute |
-| `*PGM` attribute CLLE / CLP / CL | `PGM_CL` | the attribute |
-| `*FILE` attribute DSPF | `DSPF` | DSPF |
-| `*FILE` data PF | `PF` | PF |
-| `*FILE` attribute PRTF | `PRTF` | PRTF |
-| Source member with no compiled object | `SOURCE` | member type |
-| Called program outside the scope | `EXT` | *PGM if known |
+### 2. Build it
 
-Each node: `{ "id", "kind", "attr", "lines", "sourceFile", "desc", "stats" }`.
+One command does everything:
 
-- **One node per name.** A `*MENU` usually has a same-named `*FILE` (DSPF) and `*MSGF` — map **only the MENU node**, skip the same-named siblings (duplicate ids fail the build). Likewise skip `*MODULE` rows when a `*PGM` of the same name exists.
-- `attr` = the **member type** from the complexity call when present (catches SQLRPGLE — the compiled object often just says RPGLE), else the object attribute.
-- `id` = the UPPERCASE object/member name. `lines` = total source lines (integer or `null` if unknown). `sourceFile` = source physical file name (QRPGLESRC, QDDSSRC, …).
-- `stats` (programs and SOURCE only, from the complexity call): `{ "execLines": N, "subroutines": N, "procedures": N, "sql": N }` — include only non-zero values. If a node has no stats, **omit the key** (never write `"stats": {}`).
-- **SOURCE means "no compiled object exists".** A member only becomes a SOURCE node if it appeared in `ia_uncompiled_sources`. If a name is in the `*PGM` inventory, it is a program — even when its source looks legacy. Never decide this from the source's size or style.
-- `desc` — **one plain-language sentence, ≤ 160 chars**, business role first. Patterns: program → "*Customer maintenance — display, add and F4-lookup of customers.*"; PF → "*Customer master file.*"; DSPF → "*Customer maintenance screen.*"; PRTF → "*Order report layout (spool file).*"; SOURCE → "*Legacy source member — N lines, never compiled into any object.*"; EXT → "*External program — called from this application, outside the map's scope.*". For programs, derive the role from `ia_program_summary` and the object's text description — do not guess.
+```bash
+python .claude/skills/ia/scripts/build_app_map.py all --url http://SERVER:3010/mcp
+```
 
-## 4. Links — one rule per kind
+For one library:
 
-| `kind` | Direction | Source of truth |
-|--------|-----------|-----------------|
-| `MENU` | menu → program | `ia_call_hierarchy(MENU, 'CALLEES')` |
-| `CALL` | caller → callee | `ia_call_hierarchy(PGM, 'CALLEES')` for each kept program |
-| `SBMJOB` | CL → submitted pgm (self-loop allowed) | `ia_cl_jobs(member_name='*ALL')` once, keep rows whose CL member is in scope; carry `"job"` and `"jobQueue"` |
-| `INPUT` | **file → program** | `ia_find_object_usages(object_name=PF)` once per kept PF — rows with `USING_TYPE='*PGM'` whose usage is only `I` |
-| `UPDATE` | **program → file** | same call — rows whose usage contains `U` or `O` (e.g. `U`, `I/O/U`) |
-| `DISPLAY` | program → DSPF | `ia_program_files(member_name=PGM)` rows whose file is a DSPF |
-| `PRINT` | program → PRTF | `ia_program_files` rows whose file is a PRTF |
+```bash
+python .claude/skills/ia/scripts/build_app_map.py all --url http://SERVER:3010/mcp --library CASELIB
+```
 
-Each link: `{ "source", "target", "kind", "label" }` — keep labels short ("reads", "reads + writes", "menu option", "CALL in batch").
+The URL comes from the user or from the `IA_MCP_URL` environment variable. Default is `http://localhost:3010/mcp`.
 
-- **PF links come from `ia_find_object_usages`, not `ia_program_files`** — the file map has no read/write flag and misses tables reached only through embedded SQL (`REFERENCE_SOURCE = 'S'` rows). Per (program, PF) pair: any row with `U` or `O` in `REFERENCE_USAGE` → one UPDATE link; otherwise → one INPUT link. Ignore rows whose `USING_TYPE` is not `*PGM` (skips `*MODULE` duplicates and DSPF field references).
-- **Note the INPUT direction:** data flows *from* the file *into* the program, so the file is the link `source`. UPDATE flows program → file.
-- **One SBMJOB beats a self-CALL.** A CL that re-submits itself shows up both in `ia_cl_jobs` (SBMJOB) and as a self-reference in `ia_call_hierarchy` — emit only the SBMJOB self-link (the validator rejects a CALL self-link anyway).
-- **Logical files are never nodes.** When a usage row's file is an LF, re-point the link to its based-on physical file: call `ia_file_dependencies(file_name=PF)` once per kept PF and collect its dependent LFs into a lookup; an LF whose parent PF isn't mapped → drop the link. After substitution, de-duplicate identical (source, target, kind) links.
-- **EXT rule:** a callee that is not in the scope inventory becomes an EXT node and the link must be `CALL` into it. EXT nodes are never link sources and never get file/screen links.
-- **SOURCE nodes get no links** — an uncompiled member has no compiled object, so iA records no relationships for it; the floating, disconnected node IS the message. The builder rejects any link touching a SOURCE node.
-- A CL program that re-submits itself produces a SBMJOB **self-loop** — that's correct and renders as a loop; the validator allows self-links for SBMJOB only. Take the `job`/`jobQueue` values verbatim from the `ia_cl_jobs` row — the job name is usually NOT the CL's own name.
+If the server needs credentials:
 
-## 5. Guided tour — 5–7 steps, fixed storyline
+```bash
+--token YOUR_TOKEN              # or set IA_MCP_TOKEN
+--user  YOURUSER --password ... # exchanged for a token by the server
+--insecure                      # self-signed certificate
+```
 
-Write `meta.tour` as an array of `{ "title", "text", "focus" }` (focus = a node id; omit it for a wrap-up step). Follow this storyline, **skipping any step whose subject doesn't exist**:
+The script writes both files under `docs/app-maps/{REPO}/` and prints counts, sizes and warnings. Read those lines. Do not ask for the data.
 
-1. **The front door** — the menu (or most-called program if no menu).
-2. **The workhorse** — the `PGM_RPG`/`PGM_CL` node with the highest `stats.execLines` **in your own nodes array**. A SOURCE node is never the workhorse — it doesn't run.
-3. **The batch pattern** — the CL driver, if any SBMJOB link exists.
-4. **Where the report lands** — the PRTF at the end of that batch chain.
-5. **Shared data = shared risk** — the PF with the most program links **in your own links array**.
-6. **The modernization candidate** — a SOURCE node, if any ("compiled into nothing").
-7. **Wrap-up** (no focus) — restate the exact `meta.scope` numbers and that iA can drill into any node.
+### 3. Open it
 
-Titles ≤ 5 words; text 1–3 short sentences. **Every claim must be checkable against your own JSON** — names, counts and line numbers come from the nodes/links you wrote, nothing else. Never describe scheduling or frequency ("nightly", "overnight", "daily") — a SBMJOB is user-triggered unless a job-scheduler entry proves otherwise.
+Open `docs/app-maps/{REPO}/{REPO}_AppMap.html` in the browser and confirm it renders. Then tell the user the counts and where the files are.
 
-## 6. The meta block
+### The three steps on their own
+
+`all` is `fetch` then `build`. Run them separately when you need to:
+
+```bash
+python .claude/skills/ia/scripts/build_app_map.py fetch    --url URL [--library LIB] [--out PATH]
+python .claude/skills/ia/scripts/build_app_map.py validate --data PATH [--upgrade]
+python .claude/skills/ia/scripts/build_app_map.py build    --data PATH [--template PATH] [--out PATH]
+```
+
+- `fetch` pulls the data and writes the JSON. It pages the big tables for you.
+- `validate` checks the JSON against the contract. Exit 0 = good. Exit 1 = read the `ERROR:` lines.
+- `build` validates, then injects the JSON into the viewer template.
+
+`build` is also how you rebuild after you edit the JSON — see notes below.
+
+## Notes: the only AI work
+
+The map ships with no prose. When the user asks "explain this program", "what is this cluster", you write short text into the JSON and rebuild. That is the one place your tokens belong.
+
+1. Pick the objects to describe. **At most 75.** Ask the user which ones, or take the cluster they are looking at.
+2. Get the facts with the normal tools: `ia_program_summary`, `ia_object_context_matrix`, `ia_call_hierarchy`.
+3. Write the text into the `notes` map in the JSON:
 
 ```json
-"meta": {
-  "title": "CASELIB Application Map",
-  "library": "CASELIB",
-  "area": "ORDERS",                  ← only for area-scoped maps; omit otherwise
-  "repository": "{REPOSITORY}",
-  "generated": "2026-06-12",
-  "author": "iA by programmers.io",
-  "scope": { "totalObjects": 30, "mappedObjects": 26 },
-  "tour": [ { "title": "…", "text": "…", "focus": "CASEMNU" } ]
+"notes": {
+  "DEMOERP/OEENTRY":        "Order entry. Writes the order header and lines, then submits the pick list.",
+  "cluster:AREA/AR":        "Accounts receivable: invoicing, cash receipts and the aged debt report."
 }
 ```
 
-## 7. Build — the only way to produce the HTML
+Keys are `"LIBRARY/OBJECT"` or `"cluster:SCHEME/CLUSTER_ID"`. One or two plain sentences each. Every claim must come from a tool result, never from the name.
 
+4. Rebuild:
+
+```bash
+python .claude/skills/ia/scripts/build_app_map.py build --data docs/app-maps/{REPO}/{REPO}_AppMap_Data.json
 ```
-python scripts/build_app_map.py docs/app-maps/{SCOPE}/{SCOPE}_AppMap_Data.json
-```
 
-Exit 0 → `{SCOPE}_AppMap.html` is written next to the JSON. Exit 1 → read each `ERROR:` line, fix the **JSON**, re-run. Never work around an error by editing HTML. Warnings (`WARN:`) don't block but read them — they catch over-budget maps and orphan nodes.
+A later `fetch` to the same file keeps the notes you wrote. It says so in its output.
 
-## 8. Browser gate — open the HTML and confirm
+## Verification checklist
 
-- [ ] Graph renders (not a black screen); needs internet for the CDN modules.
-- [ ] Header shows the right library/scope and the stats chips match the JSON counts.
-- [ ] Every node kind present appears in the filter list; toggling a filter hides those nodes.
-- [ ] Search for one program by name — it flies to the node and opens the info panel with desc + connections.
-- [ ] If SBMJOB links exist, the red batch loop is visible.
-- [ ] EXT nodes (grey wireframe pyramids) sit at the edge with only incoming CALL links.
-- [ ] Guided tour steps through and focuses the right nodes.
+- [ ] `fetch` printed non-zero counts for nodes, links, clusters and schemes.
+- [ ] You read every `WARN:` line and told the user about any that matter.
+- [ ] `build` exited 0 and reported the HTML size.
+- [ ] The HTML opens in a browser and the graph renders (it loads its 3D library from a CDN, so the machine needs internet).
+- [ ] The lens list in the viewer matches the lens count the script reported.
+- [ ] Counts you quote to the user come from the script output, not from memory.
 
-## Common errors
+## Troubleshooting
 
-| Symptom | Fix |
-|---------|-----|
-| Builder: `kind 'X' is not one of …` | You invented a kind. Map the object using the §3 table — or leave it out. |
-| Builder: `INPUT must be file → program …` (or similar direction error) | The link is inverted — swap `source` and `target`. INPUT is the only file→program kind; everything else flows out of the program. |
-| Builder: `SOURCE … nodes are isolated by design` | You linked an uncompiled member, or misclassified a program as SOURCE / a SOURCE as a program. Re-check `ia_uncompiled_sources`. |
-| Builder: `mappedObjects is N but the file has M` | Count your non-EXT nodes and set `meta.scope.mappedObjects` to that number. |
-| Builder: `source/target … is not a node id` | A link references an evicted or misspelled node. Drop the link or add the node. |
-| Builder warns `zero CALL links` | You almost certainly missed the program→driver→print chains — run `ia_call_hierarchy(CALLEES)` for every kept program. |
-| Builder: `exceeds the hard cap` | Re-apply §2 fill order — evict lowest-ranked programs' files first, then programs. |
-| Builder: `EXT node … cannot be a link source` | EXT is a CALL target only. If you know the external program's own links, it belongs in scope instead. |
-| Map is a hairball in the browser | Too many nodes — trim toward 75; drop single-use PFs and PRTFs of minor programs. |
-| A file shows no links | It was reached only through logical files whose parent PF you didn't map — apply the LF substitution rule in §4. |
-| Tour step flies nowhere | Its `focus` id isn't a node — the builder catches this; re-run it. |
+| What you see | What it means | What to do |
+|---|---|---|
+| `does not have the app-map tools` | The server is an older iA release | Ask the iA administrator to update the iA MCP server. Nothing on your side fixes it. |
+| `Cannot reach the iA MCP server` | Wrong URL, server down, VPN off | Check the URL with the user. Confirm the server is running. |
+| `Authentication failed` | No token, wrong token, wrong password | Add `--token` / `IA_MCP_TOKEN`, or `--user` and `--password`. |
+| TLS / certificate error | Self-signed certificate on the server | Add `--insecure`. |
+| `server is busy - waiting Ns` | The server rate-limits each client | Nothing. The script waits as long as the server asks and carries on. A big repository can take a few minutes. |
+| `rate limiting this client ... did not recover` | The limit outlasted six waits | Wait a few minutes and run it again. A smaller `--page` does not help a per-request limit. |
+| `WARN: rules ...` / `no rules rows` | The rules seed is not reachable | The map is still valid. Business-area cluster names may be missing or generic. Say so; do not retry. |
+| `retired v1 format` | An old hand-written map file | That shape is gone. Run `fetch` to make a new one. |
+| `contract is N` | The file is from a newer or older producer | Re-fetch. Do not edit the file to get past it. |
+| `no 'contract' key` (warning only) | A file made before the envelope existed | It still builds. `validate --data PATH --upgrade` stamps the missing keys. |
+| `link(s) start at an object that is not a node` | The engine data is inconsistent | Report it. It is an engine defect, not a script bug. |
+| `link(s) marked in-scope point at an object that is nowhere in the map` | The target was not built as a node | Warning only. The viewer drops those links. Mention the count; do not try to fix the file. |
+| `group(s) have no primary cluster and no fallback bucket` | An object is ungrouped in one lens | Warning only. It still shows; it just sits outside the lens grouping. |
+| `node kind 'X' is not in the known list` | The engine added a new object kind | Harmless. The viewer draws it as a generic node. |
+| `cross-library link target(s)` (info) | A program uses an object in a sibling library | Normal in a multi-library repository. Nothing to do. |
+| Repository shows as `UNKNOWN` | The server did not report its schema | Re-run with `--repo NAME`. |
+| Map is an unreadable hairball | Too many objects in one picture | Re-run with `--library LIB`. See Future scenarios. |
+
+## Future scenarios
+
+The design already covers these. None of them needs a new script.
+
+**One library instead of everything.** `--library LIB`. The lens list, the links and the libraries block all narrow to that library on their own.
+
+**More than about 2000 objects.** `validate` says so. Build one map per library. A 10 000-object library is still too much for one picture — the agreed answer is a drill-down: an overview map of clusters first, then a detail map per cluster. That is designed but not built yet. Until it ships, split by library and by lens, and say plainly that a single map of that size will not read well.
+
+**The JSON produced on the IBM i.** A future iA release exports the same JSON straight from the box (built by the iA engine) with `"source": "ifs"`. Take that file and run `build --data PATH`. No fetch, no MCP server, same viewer. The script accepts it because the contract is the same.
+
+**New lenses.** The viewer builds its lens list from the data. When the engine adds a lens, it appears in the next map with no change here.
+
+**New engine columns.** Unknown columns pass through the script untouched and the viewer ignores what it does not know. New node kinds and link kinds produce a warning, never a failure — `*CMD` objects are already on the way.
+
+**A server that does not have the tools yet.** Not every customer runs the newest iA release. The script says so in one line and names the fix: the administrator updates the server. Do not try to work around it by reading rows yourself — that is the flow this replaced.
+
+**Offline.** The viewer loads its 3D library from a CDN, so the machine viewing the map needs internet. Fetching and building do not. For a demo on a closed network, build the map in advance and check it opens on that machine.
+
+## Notes on the template
+
+`templates/app-map-template.html` is the viewer. The script injects the data into the `__APPMAP_DATA__` token inside it. **Never edit the HTML the script produced, and never hand-edit the data into a template.**

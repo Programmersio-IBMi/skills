@@ -16,6 +16,8 @@ This directory contains specialized documentation templates for different audien
 
 **Onboarding deliverable template** (used by [onboarding-guide.md](../onboarding-guide.md), not audience-selected): [`template-onboarding-guide.md`](template-onboarding-guide.md) — the menu-scoped New-Developer Onboarding Guide. Its subject is a `*MENU`, not a program, so it is outside the audience-selection logic below.
 
+**Synon / CA 2E functional template** (used by [synon-documentation.md §6F](../synon-documentation.md#6f-functional-document-structure), not audience-selected): [`template-synon-functional.md`](template-synon-functional.md) — the `Synon_Functional_Document` DocType. It mirrors `template-business.md`'s seven sections so a functional document reads the same to a business analyst either way, but its content is sourced from a 2E action diagram rather than from RPG subroutines. Selected by **technology plus wording**, never by the audience question below: a 2E function goes to the Synon reference for every DocType it carries.
+
 ---
 
 ## Template Selection Logic
@@ -25,6 +27,7 @@ This directory contains specialized documentation templates for different audien
 | "document program X" (no preferences) | `template-developer.md` (DEFAULT) |
 | "New developers / onboarding team" | `template-developer.md` |
 | "Business analysts (non-technical)" | `template-business.md` |
+| Any of the above, but the target is a **Synon / CA 2E function** | Not this table — see [synon-documentation.md §0](../synon-documentation.md#0-doctype-selection-run-first). `template-synon-functional.md` for a functional request, the fixed §6 structure otherwise |
 | "Architects / auditors" | `template-architect.md` |
 | "Support / operations team" | `template-operations.md` |
 | "Test cases / test scripts / UAT scripts" | `template-testcases.md` |
